@@ -38,6 +38,47 @@ def _config_key(payload: dict) -> tuple:
     )
 
 
+class _ClientTransport:
+    """Drop outbound frames after the browser disconnects (avoids ASGI RuntimeError)."""
+
+    __slots__ = ('_alive', '_ws')
+
+    def __init__(self, ws: WebSocket) -> None:
+        self._ws = ws
+        self._alive = True
+
+    def close(self) -> None:
+        self._alive = False
+
+    async def send_json(self, payload: str) -> None:
+        if not self._alive:
+            return
+        try:
+            await self._ws.send_text(payload)
+        except WebSocketDisconnect:
+            self._alive = False
+        except RuntimeError as exc:
+            msg = str(exc).lower()
+            if 'websocket' in msg or 'closed' in msg or 'completed' in msg:
+                self._alive = False
+                return
+            raise
+
+    async def send_binary(self, data: bytes) -> None:
+        if not self._alive:
+            return
+        try:
+            await self._ws.send_bytes(data)
+        except WebSocketDisconnect:
+            self._alive = False
+        except RuntimeError as exc:
+            msg = str(exc).lower()
+            if 'websocket' in msg or 'closed' in msg or 'completed' in msg:
+                self._alive = False
+                return
+            raise
+
+
 @router.websocket('/ws/voice')
 async def ws_voice(websocket: WebSocket):
     if not STREAM_ALLOW_PUBLIC:
@@ -46,12 +87,7 @@ async def ws_voice(websocket: WebSocket):
     await websocket.accept()
 
     duplex = DuplexAudioState(sample_rate=STREAM_SAMPLE_RATE)
-
-    async def send_json(payload: str) -> None:
-        await websocket.send_text(payload)
-
-    async def send_binary(data: bytes) -> None:
-        await websocket.send_bytes(data)
+    transport = _ClientTransport(websocket)
 
     session: InterviewSession | None = None
 
@@ -64,7 +100,7 @@ async def ws_voice(websocket: WebSocket):
             if 'bytes' in message and message['bytes'] is not None:
                 chunk = message['bytes']
                 if session is None:
-                    await send_json(
+                    await transport.send_json(
                         json_event(WsType.ERROR, message='Send config JSON before audio')
                     )
                     continue
@@ -79,13 +115,13 @@ async def ws_voice(websocket: WebSocket):
             try:
                 payload = json.loads(raw)
             except json.JSONDecodeError:
-                await send_json(json_event(WsType.ERROR, message='Invalid JSON'))
+                await transport.send_json(json_event(WsType.ERROR, message='Invalid JSON'))
                 continue
 
             msg_type = payload.get('type', '')
 
             if msg_type == WsType.PING.value:
-                await send_json(json_event(WsType.PONG))
+                await transport.send_json(json_event(WsType.PONG))
                 continue
 
             if msg_type == WsType.CONFIG.value:
@@ -110,8 +146,8 @@ async def ws_voice(websocket: WebSocket):
                     if session:
                         await session.close()
                     session = InterviewSession(
-                        send_json=send_json,
-                        send_binary=send_binary,
+                        send_json=transport.send_json,
+                        send_binary=transport.send_binary,
                         duplex=duplex,
                         language_hint=lang,
                         voice_id=voice_id,
@@ -124,7 +160,7 @@ async def ws_voice(websocket: WebSocket):
                     else:
                         greeted = False
 
-                await send_json(
+                await transport.send_json(
                     json_event(
                         WsType.CONFIG,
                         ok=True,
@@ -142,7 +178,7 @@ async def ws_voice(websocket: WebSocket):
                 continue
 
             if session is None:
-                await send_json(json_event(WsType.ERROR, message='Not configured'))
+                await transport.send_json(json_event(WsType.ERROR, message='Not configured'))
                 continue
 
             if msg_type == WsType.END_UTTERANCE.value:
@@ -153,14 +189,15 @@ async def ws_voice(websocket: WebSocket):
                 offset = payload.get('offset_ms', 0.0)
                 await duplex.request_barge_in()
                 await session.handle_barge_in(offset)
-                await send_json(json_event(WsType.BARGE_IN, ok=True))
+                await transport.send_json(json_event(WsType.BARGE_IN, ok=True))
             else:
-                await send_json(json_event(WsType.ERROR, message=f'Unknown type: {msg_type}'))
+                await transport.send_json(json_event(WsType.ERROR, message=f'Unknown type: {msg_type}'))
 
     except WebSocketDisconnect:
         pass
     except Exception:
         logger.exception('ws/voice session error')
     finally:
+        transport.close()
         if session:
             await session.close()

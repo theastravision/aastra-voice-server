@@ -107,7 +107,10 @@ class TtsWorker:
         loop.run_in_executor(None, _producer)
 
         while True:
-            item = await queue.get()
+            try:
+                item = await queue.get()
+            except asyncio.CancelledError:
+                break
             if item is None:
                 break
             if isinstance(item, BaseException):

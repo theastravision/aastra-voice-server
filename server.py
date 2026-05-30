@@ -150,8 +150,14 @@ class InterviewSession:
         )
 
     async def close(self) -> None:
+        if self._closed:
+            return
         self._closed = True
+        self._duplex.cancel_generation.set()
         self._cancel_listen_idle()
+        if self._end_utterance_task and not self._end_utterance_task.done():
+            self._end_utterance_task.cancel()
+        self._end_utterance_task = None
         for task in self._turn_tasks:
             if not task.done():
                 task.cancel()
@@ -159,6 +165,20 @@ class InterviewSession:
         await self._stt.close()
         await self._tts.close()
         await self._bus.session_event(self.session_id, 'session_end')
+
+    def _spawn_turn_task(self, coro) -> asyncio.Task:
+        task = asyncio.create_task(coro)
+        self._turn_tasks.append(task)
+        task.add_done_callback(self._on_turn_task_done)
+        return task
+
+    @staticmethod
+    def _on_turn_task_done(task: asyncio.Task) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.exception('turn task failed', exc_info=exc)
 
     async def play_greeting(self) -> bool:
         if not await self._state.try_greet():
@@ -188,15 +208,20 @@ class InterviewSession:
             await self._stream_tts_phrase(text, tts_route)
             self._history.append({'role': 'assistant', 'content': text})
             await self._send_json(_evt('assistant_text', text=text))
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             logger.exception('greeting failed')
-            await self._send_json(_evt('error', message=str(exc)))
+            if not self._closed:
+                await self._send_json(_evt('error', message=str(exc)))
         finally:
             await self._duplex.set_agent_speaking(False)
             await self._duplex.end_turn()
-            await self._send_json(_evt('turn_end'))
+            if not self._closed:
+                await self._send_json(_evt('turn_end'))
             self._turn_audio_config_sent = False
-            await self._state.begin_listening()
+            if not self._closed:
+                await self._state.begin_listening()
         return True
 
     async def on_listen_ready(self) -> None:
@@ -331,15 +356,12 @@ class InterviewSession:
                 self._last_stt_text = ''
                 self._best_stt_text = ''
                 if self._interview_phase != InterviewPhase.ACTIVE:
-                    task = asyncio.create_task(self._handle_opening_utterance(text))
-                    self._turn_tasks.append(task)
+                    self._spawn_turn_task(self._handle_opening_utterance(text))
                     return
                 if is_repeat_intent(text):
-                    task = asyncio.create_task(self._repeat_last_question())
-                    self._turn_tasks.append(task)
+                    self._spawn_turn_task(self._repeat_last_question())
                     return
-                task = asyncio.create_task(self._run_turn(text))
-                self._turn_tasks.append(task)
+                self._spawn_turn_task(self._run_turn(text))
                 return
 
             await self._prompt_empty_utterance()
@@ -418,16 +440,21 @@ class InterviewSession:
             await self._bus.session_event(
                 self.session_id, 'assistant_text', text=assistant_text
             )
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             logger.exception('canned reply failed')
-            await self._send_json(_evt('error', message=str(exc)))
+            if not self._closed:
+                await self._send_json(_evt('error', message=str(exc)))
         finally:
             await self._duplex.set_agent_speaking(False)
             await self._duplex.end_turn()
-            await self._send_json(_evt('turn_end'))
-            await self._bus.turn_event(self.session_id, 'turn_end')
+            if not self._closed:
+                await self._send_json(_evt('turn_end'))
+                await self._bus.turn_event(self.session_id, 'turn_end')
             self._turn_audio_config_sent = False
-            await self._state.begin_listening()
+            if not self._closed:
+                await self._state.begin_listening()
 
     async def _run_turn(self, user_text: str, *, intro_follow_up: bool = False) -> None:
         self._barge_in_offset_ms = 0.0
@@ -485,17 +512,22 @@ class InterviewSession:
                 await self._bus.session_event(
                     self.session_id, 'assistant_text', text=assistant_text
                 )
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             logger.exception('turn failed model=%s', OPENAI_MODEL)
-            await self._send_json(_evt('error', message=str(exc)))
-            await self._bus.session_event(self.session_id, 'turn_error', error=str(exc))
+            if not self._closed:
+                await self._send_json(_evt('error', message=str(exc)))
+                await self._bus.session_event(self.session_id, 'turn_error', error=str(exc))
         finally:
             await self._duplex.set_agent_speaking(False)
             await self._duplex.end_turn()
-            await self._send_json(_evt('turn_end'))
-            await self._bus.turn_event(self.session_id, 'turn_end')
+            if not self._closed:
+                await self._send_json(_evt('turn_end'))
+                await self._bus.turn_event(self.session_id, 'turn_end')
             self._turn_audio_config_sent = False
-            await self._state.begin_listening()
+            if not self._closed:
+                await self._state.begin_listening()
 
     async def _repeat_last_question(self) -> None:
         last_assistant = ''
@@ -521,14 +553,19 @@ class InterviewSession:
             await self._send_json(_evt('assistant_delta', text=last_assistant))
             await self._stream_tts_phrase(last_assistant, tts_route)
             await self._send_json(_evt('assistant_text', text=f'{ack} {last_assistant}'))
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             logger.exception('repeat question failed')
-            await self._send_json(_evt('error', message=str(exc)))
+            if not self._closed:
+                await self._send_json(_evt('error', message=str(exc)))
         finally:
             await self._duplex.set_agent_speaking(False)
             await self._duplex.end_turn()
-            await self._send_json(_evt('turn_end'))
-            await self._state.begin_listening()
+            if not self._closed:
+                await self._send_json(_evt('turn_end'))
+            if not self._closed:
+                await self._state.begin_listening()
 
     async def _prompt_empty_utterance(self) -> None:
         now = time.monotonic()
@@ -593,13 +630,17 @@ class InterviewSession:
             await self._tts.start(language_hint=tts_route, voice_id=self._voice_id)
             await self._send_json(_evt('assistant_text', text=hint))
             await self._stream_tts_phrase(hint, tts_route)
+        except asyncio.CancelledError:
+            raise
         except Exception:
             logger.exception('listen idle nudge failed')
         finally:
             await self._duplex.set_agent_speaking(False)
             await self._duplex.end_turn()
-            await self._send_json(_evt('turn_end'))
-            await self._state.begin_listening()
+            if not self._closed:
+                await self._send_json(_evt('turn_end'))
+            if not self._closed:
+                await self._state.begin_listening()
 
     async def _stream_cached_interjection(self, clip) -> None:
         try:
@@ -621,7 +662,7 @@ class InterviewSession:
             return
         try:
             async for chunk in self._tts.synthesize_stream(cleaned):
-                if self._duplex.cancel_generation.is_set():
+                if self._closed or self._duplex.cancel_generation.is_set():
                     break
                 sr = chunk.sample_rate or 24000
                 pcm = ensure_pcm_s16le_bytes(chunk.pcm_s16le)
@@ -633,9 +674,12 @@ class InterviewSession:
                     )
                     self._turn_audio_config_sent = True
                 await self._send_binary(pcm)
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             logger.exception('TTS phrase failed')
-            await self._send_json(_evt('error', message=f'TTS failed: {exc}'))
+            if not self._closed:
+                await self._send_json(_evt('error', message=f'TTS failed: {exc}'))
 
 
 def _evt(event_type: str, **fields) -> str:
