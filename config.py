@@ -74,11 +74,11 @@ ASTRA_DEFAULT_REF_TEXT = (
 ASTRA_EDGE_TTS_VOICE = os.environ.get('ASTRA_EDGE_TTS_VOICE', 'kn-IN-SapnaNeural').strip()
 ASTRA_HINGLISH_BILINGUAL_REF_TEXT = (
     'Namaste, main Astra hoon. Shuru karne se pehle, screen share on rakhein. '
-    'I will conduct your technical interview today. Kripya apna naam batayiye.'
+    'Main aaj aapka technical interview loongi. Kripya apna naam batayiye.'
 )
 ASTRA_HINGLISH_BILINGUAL_REF_TEXT_DEVANAGARI = (
     'नमस्ते, मैं Astra हूँ। शुरू करने से पहले, screen share on रखें। '
-    'I will conduct your technical interview today. कृपया अपना naam बताइए।'
+    'मैं आज आपका technical interview लूँगी। कृपया अपना naam बताइए।'
 )
 
 # TTS script + Hinglish engine routing
@@ -147,7 +147,11 @@ F5_REF_AUDIO_HINGLISH = os.environ.get(
 ).strip()
 F5_REF_TEXT_HINGLISH = os.environ.get(
     'F5_REF_TEXT_HINGLISH',
-    ASTRA_HINGLISH_BILINGUAL_REF_TEXT,
+    (
+        ASTRA_HINGLISH_BILINGUAL_REF_TEXT_DEVANAGARI
+        if F5_HINGLISH_SCRIPT == 'devanagari'
+        else ASTRA_HINGLISH_BILINGUAL_REF_TEXT
+    ),
 ).strip()
 
 for _label, _text in (

@@ -92,7 +92,10 @@ class FasterWhisperInferenceManager:
         try:
             lang = resolve_whisper_language(language_hint)
             use_vad = effective_whisper_vad_filter()
-            kwargs = {**_build_transcribe_kwargs(lang), 'vad_filter': use_vad}
+            kwargs = {
+                **_build_transcribe_kwargs(lang, session_hint=language_hint),
+                'vad_filter': use_vad,
+            }
             if use_vad:
                 kwargs['vad_parameters'] = dict(min_silence_duration_ms=STT_VAD_SILENCE_MS)
             segments, info = self._model.transcribe(wav_path, **kwargs)

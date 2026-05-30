@@ -59,16 +59,32 @@ async def _generate_with_edge_tts(dest: Path, text: str, voice: str) -> None:
     tmp = dest.with_suffix('.mp3')
     await edge_tts.Communicate(text, voice).save(str(tmp))
     try:
-        import torch
-        import torchaudio
+        try:
+            import torchaudio
 
-        wav, sr = torchaudio.load(str(tmp))
-        if wav.shape[0] > 1:
-            wav = wav.mean(dim=0, keepdim=True)
-        target_sr = 24000
-        if sr != target_sr:
-            wav = torchaudio.functional.resample(wav, sr, target_sr)
-        torchaudio.save(str(dest), wav, target_sr)
+            wav, sr = torchaudio.load(str(tmp))
+            if wav.shape[0] > 1:
+                wav = wav.mean(dim=0, keepdim=True)
+            target_sr = 24000
+            if sr != target_sr:
+                wav = torchaudio.functional.resample(wav, sr, target_sr)
+            torchaudio.save(str(dest), wav, target_sr)
+        except ImportError:
+            import shutil
+            import subprocess
+
+            ffmpeg = shutil.which('ffmpeg')
+            if not ffmpeg:
+                raise SystemExit(
+                    'Need torchaudio or ffmpeg on PATH to convert edge-tts MP3 to WAV.\n'
+                    '  pip install torchaudio\n'
+                    '  or install ffmpeg and retry.'
+                )
+            subprocess.run(
+                [ffmpeg, '-y', '-i', str(tmp), '-ar', '24000', '-ac', '1', str(dest)],
+                check=True,
+                capture_output=True,
+            )
     finally:
         tmp.unlink(missing_ok=True)
 
@@ -126,7 +142,7 @@ async def _generate_all(
         print(f'GEN  {voice_id}: {dest.name}')
         print(f'     language: {voice.get("language")}')
         print(f'     edge-tts:   {edge_voice}')
-        print(f'     ref_text:   {ref_text[:80]}{"…" if len(ref_text) > 80 else ""}')
+        print(f'     ref_text:   {ref_text[:80]}{"..." if len(ref_text) > 80 else ""}')
         await _generate_with_edge_tts(dest, ref_text, edge_voice)
         print(f'Wrote {dest}')
         generated += 1

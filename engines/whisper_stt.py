@@ -89,9 +89,13 @@ def _suffix_for_filename(filename: str) -> str:
     return '.webm'
 
 
-def _build_transcribe_kwargs(lang: str | None) -> dict:
+def _build_transcribe_kwargs(
+    lang: str | None,
+    *,
+    session_hint: str | None = None,
+) -> dict:
     beam = WHISPER_BEAM_SIZE
-    if lang == 'hi':
+    if lang == 'hi' or (session_hint or '').lower() in ('hi', 'hinglish'):
         beam = max(WHISPER_BEAM_SIZE, 5)
     kwargs: dict = {
         'beam_size': beam,
@@ -102,7 +106,7 @@ def _build_transcribe_kwargs(lang: str | None) -> dict:
         kwargs['vad_parameters'] = _VAD_PARAMS
     if lang:
         kwargs['language'] = lang
-    prompt = whisper_initial_prompt(lang)
+    prompt = whisper_initial_prompt(lang or session_hint)
     if prompt:
         kwargs['initial_prompt'] = prompt
     return kwargs
@@ -118,7 +122,7 @@ def transcribe_bytes(audio_bytes: bytes, *, filename: str = 'audio.webm', langua
     lang = resolve_whisper_language(language)
 
     try:
-        segments, info = model.transcribe(wav_path, **_build_transcribe_kwargs(lang))
+        segments, info = model.transcribe(wav_path, **_build_transcribe_kwargs(lang, session_hint=language))
         text = ''.join(seg.text for seg in segments).strip()
         detected = getattr(info, 'language', None) or lang or 'en'
         return {'text': text, 'detected_language': detected}

@@ -80,10 +80,10 @@ def opening_script(session_lang: SessionLanguage | None) -> tuple[str, ReplyScri
     if script == 'hi':
         if devanagari:
             text = (
-                'नमस्ते, मैं Astra हूँ। शुरू करने से पहले: अपनी screen share on रखें '
-                'और camera हमेशा on रखें। Screen split या extra tabs mat kholiye. '
+                'नमस्ते, मैं Astra हूँ। शुरू करने से पहले screen share और camera on रखें। '
+                'कृपया screen split या extra tabs न खोलिए। '
                 'अगर कुछ गलत दिखा तो interview pause हो सकती है। '
-                'Interview ke bahar sawaal mat poochiye. कृपया अपना naam बताइए।'
+                'Interview के दौरान ही सवाल पूछिए। आपका naam क्या है?'
             )
         else:
             text = (
@@ -95,10 +95,10 @@ def opening_script(session_lang: SessionLanguage | None) -> tuple[str, ReplyScri
     elif script == 'hinglish':
         if devanagari:
             text = (
-                'नमस्ते, मैं Astra हूँ। शुरू करने से पहले, screen share on रखें '
-                'और camera हमेशा on रखें। Screen split या extra tabs mat kholiye. '
+                'नमस्ते, मैं Astra हूँ। शुरू करने से पहले screen share और camera on रखें। '
+                'कृपया screen split या extra tabs न खोलिए। '
                 'अगर कुछ गलत दिखा तो interview pause हो सकती है। '
-                'Interview ke bahar sawaal mat poochiye. कृपया अपना naam बताइए।'
+                'Interview के दौरान ही सवाल पूछिए। आपका naam क्या है?'
             )
         else:
             text = (
@@ -134,7 +134,7 @@ def name_retry_script(session_lang: SessionLanguage | None) -> tuple[str, ReplyS
     if script == 'hinglish':
         if devanagari:
             return (
-                'Sorry, मैं आपका naam नहीं सुन पाई। Please अपना full naam बोलिए।',
+                'Sorry, मैं आपका naam नहीं सुन पाई। कृपया अपना full naam बोलिए।',
                 script,
             )
         return (
@@ -159,13 +159,13 @@ def welcome_and_intro_script(
         if devanagari:
             if display:
                 text = (
-                    f'Welcome {display}. मैं आज आपका {role} role के लिए interview लूँगी। '
-                    f'अपने बारे में thoda बताइए।'
+                    f'Welcome {display}! मैं आज आपके {role} interview के लिए यहाँ हूँ। '
+                    'थोड़ा अपने बारे में बताइए।'
                 )
             else:
                 text = (
-                    f'Welcome. मैं आज आपका {role} role के लिए interview लूँगी। '
-                    f'अपने बारे में thoda बताइए।'
+                    f'Welcome! मैं आज आपके {role} interview के लिए यहाँ हूँ। '
+                    'थोड़ा अपने बारे में बताइए।'
                 )
         elif display:
             text = (
@@ -181,13 +181,13 @@ def welcome_and_intro_script(
         if devanagari:
             if display:
                 text = (
-                    f'Welcome {display}. मैं आज आपका {role} role के लिए interview लूँगी। '
-                    f'अपने बारे में thoda बताइए।'
+                    f'Welcome {display}! मैं आज आपके {role} interview के लिए यहाँ हूँ। '
+                    'थोड़ा अपने बारे में बताइए।'
                 )
             else:
                 text = (
-                    f'Welcome. मैं आज आपका {role} role के लिए interview लूँगी। '
-                    f'अपने बारे में thoda बताइए।'
+                    f'Welcome! मैं आज आपके {role} interview के लिए यहाँ हूँ। '
+                    'थोड़ा अपने बारे में बताइए।'
                 )
         elif display:
             text = (

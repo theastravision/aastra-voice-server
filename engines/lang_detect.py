@@ -100,11 +100,21 @@ def _generated_whisper_prompt() -> str | None:
 def whisper_initial_prompt(language: str | None) -> str | None:
     names = whisper_names_prompt(36)
     if language == 'hi':
-        return f'यह हिंदी में तकनीकी साक्षात्कार है। {names}'
+        return (
+            f'हिंग्लिश technical interview — Hindi और English mixed बातचीत। '
+            f'Software engineer, React, Python, API, project, experience. {names}'
+        )
     if language == 'en':
         return _WHISPER_INTERVIEW_EN_PROMPT
     generated = _generated_whisper_prompt()
     base = WHISPER_INITIAL_PROMPT or generated or ''
+    hinglish_base = (
+        'Hinglish technical interview. Mixed Hindi and English speech. '
+        'Software engineer, React, Python, API, database, project, experience. '
+        'हिंदी और अंग्रेज़ी मिश्रित साक्षात्कार।'
+    )
+    if not base:
+        base = hinglish_base
     if WHISPER_LANGUAGE == 'auto' or not language:
         return f'{base} {names}'.strip() if base else names
     return f'{base} {names}'.strip() if base else names

@@ -13,7 +13,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 
-from config import INTERJECTION_TIMEOUT_MS, OPENAI_VOICE_TEMPERATURE
+from config import F5_HINGLISH_SCRIPT, INTERJECTION_TIMEOUT_MS, OPENAI_VOICE_TEMPERATURE
 from engines.interjections import pick_interjection
 from engines.melo_phrase_buffer import HindiPhraseBuffer
 from engines.tts_router import resolve_tts_backend
@@ -28,6 +28,13 @@ SendBinary = Callable[[bytes], Awaitable[None]]
 StreamTtsPhrase = Callable[[str, str], Awaitable[None]]
 StreamInterjection = Callable[[object], Awaitable[None]]
 CancelEvent = asyncio.Event
+
+
+def _use_hindi_phrase_buffer(reply_script: str) -> bool:
+    """Strong sentence boundaries for Hindi/Hinglish TTS (Melo or F5 Devanagari)."""
+    if resolve_tts_backend(reply_script) == 'melotts':
+        return True
+    return reply_script in ('hi', 'hinglish') and F5_HINGLISH_SCRIPT == 'devanagari'
 
 
 class VoicePipeline:
@@ -67,14 +74,14 @@ class VoicePipeline:
         await self._state.transition(SessionPhase.LLM_STREAMING)
         await self._tts.start(language_hint=tts_route, voice_id=voice_id)
 
-        use_melo = resolve_tts_backend(reply_script) == 'melotts'
+        use_hindi_buffer = _use_hindi_phrase_buffer(reply_script)
         phrase_q: asyncio.Queue[str | None] = asyncio.Queue(maxsize=8)
         first_token_event = asyncio.Event()
         first_phrase_event = asyncio.Event()
         full_reply: list[str] = []
 
         async def _llm_producer() -> None:
-            splitter = HindiPhraseBuffer() if use_melo else PhraseBuffer()
+            splitter = HindiPhraseBuffer() if use_hindi_buffer else PhraseBuffer()
             try:
                 async for token in stream_chat_tokens(
                     messages, temperature=OPENAI_VOICE_TEMPERATURE
@@ -100,7 +107,7 @@ class VoicePipeline:
                 await phrase_q.put(None)
 
         async def _interjection_watcher() -> None:
-            if use_melo:
+            if use_hindi_buffer:
                 return
             try:
                 done, pending = await asyncio.wait(
@@ -136,7 +143,7 @@ class VoicePipeline:
                     break
                 await self._stream_tts_phrase(phrase, tts_route)
 
-        if use_melo:
+        if use_hindi_buffer:
             await asyncio.gather(_llm_producer(), _tts_consumer())
         else:
             await asyncio.gather(

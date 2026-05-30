@@ -122,14 +122,14 @@ def system_script_rules(session_lang: SessionLanguage | None) -> str:
         return (
             'OUTPUT SCRIPT (mandatory): Write Hindi in Devanagari only. '
             'Keep English technical terms in Latin (React, Python, API). '
-            'Never romanize Hindi — do NOT write "main", "aap", "batayiye", '
-            '"Shuru karne se pehle". Write "मैं", "आप", "बताइए", "शुरू करने से पहले".'
+            'Never romanize Hindi — do NOT write "main", "aap", "batayiye". '
+            'Use warm, simple spoken Hindi (बताइए, समझ गई, बहुत अच्छा) — avoid heavy Sanskrit.'
         )
     return (
         'OUTPUT SCRIPT (mandatory): Hinglish session — every Hindi word MUST be Devanagari. '
         'English and technical terms stay Latin (React, Python, interview, Welcome). '
-        'Never romanize Hindi. Do NOT write "Shuru karne se pehle" — write "शुरू करने से पहले". '
-        'Do NOT write "main aapka naam" — write "मैं आपका naam" or fully Devanagari for Hindi parts.'
+        'Never romanize Hindi. Write "शुरू करने से पहले" not "Shuru karne se pehle". '
+        'Use warm, conversational Hindi — friendly and clear when spoken aloud.'
     )
 
 
@@ -144,13 +144,15 @@ def llm_language_hint_strict(session_lang: SessionLanguage | None) -> str:
         return (
             'CRITICAL: Reply in Hindi using Devanagari for all Hindi words '
             '(e.g. मैं आपका interview लूँगी). Latin only for English tech terms. '
-            'Never use romanized Hindi. Maximum twelve spoken words per turn.'
+            'Never use romanized Hindi. Warm, simple spoken tone. '
+            'Maximum twelve spoken words per turn.'
         )
     if session_lang == 'hinglish':
         return (
             'CRITICAL: Hinglish session — Hindi words in Devanagari, English/tech in Latin. '
-            'Example: आप apne project ke baare mein thoda batayiye is WRONG. '
-            'Write: आप apne project के बारे में thoda बताइए. '
+            'Example wrong: आप apne project ke baare mein batayiye. '
+            'Example right: आप apne project के बारे में बताइए. '
+            'Warm, friendly tone — short natural sentences. '
             'Maximum twelve spoken words per turn.'
         )
     return llm_language_hint_strict('hinglish')

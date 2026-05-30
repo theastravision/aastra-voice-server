@@ -190,12 +190,25 @@ def is_repeat_intent(text: str) -> bool:
 
 def listen_idle_message(session_lang: SessionLanguage | None) -> tuple[str, str]:
     """After silence while waiting for an answer: offer repeat or more thinking time."""
+    from engines.llm_script_contract import uses_devanagari_output
+
+    devanagari = uses_devanagari_output()
     if session_lang == 'hi':
+        if devanagari:
+            return (
+                'क्या आप अभी भी जवाब सोच रहे हैं, या मैं सवाल दोहराऊँ?',
+                'hi',
+            )
         return (
             'Kya aap abhi bhi jawab soch rahe hain, ya main sawaal dohraoon?',
             'hi',
         )
     if session_lang == 'hinglish':
+        if devanagari:
+            return (
+                'क्या आप अभी भी answer सोच रहे हैं, या मैं question repeat करूँ?',
+                'hinglish',
+            )
         return (
             'Kya aap abhi bhi answer soch rahe hain, ya main question repeat karoon?',
             'hinglish',
@@ -207,8 +220,15 @@ def listen_idle_message(session_lang: SessionLanguage | None) -> tuple[str, str]
 
 
 def repeat_last_question_message(session_lang: SessionLanguage | None) -> tuple[str, str]:
+    from engines.llm_script_contract import uses_devanagari_output
+
+    devanagari = uses_devanagari_output()
     if session_lang == 'hi':
+        if devanagari:
+            return 'ठीक है, मैं आखिरी सवाल दोहराती हूँ।', 'hi'
         return 'Theek hai, main aakhri sawaal dohraati hoon.', 'hi'
     if session_lang == 'hinglish':
+        if devanagari:
+            return 'ठीक है, मैं last question repeat करती हूँ।', 'hinglish'
         return 'Theek hai, main last question repeat karti hoon.', 'hinglish'
     return 'Sure, I will repeat the last question.', 'en'
