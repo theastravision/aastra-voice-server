@@ -93,7 +93,7 @@ sync_pipeline_env() {
 
   # ── TTS: F5 English + Hinglish reference clips (no duplicate F5_REF_AUDIO) ─
   upsert_env_key TTS_PROVIDER f5
-  upsert_env_key TTS_HINGLISH_ENGINE f5_devanagari
+  upsert_env_key TTS_HINGLISH_ENGINE melotts
   upsert_env_key TTS_OUTPUT_SCRIPT roman
   upsert_env_key TTS_LLM_SCRIPT_STRICT true
   upsert_env_key MELOTTS_DEVICE cuda

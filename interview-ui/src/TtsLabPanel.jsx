@@ -30,6 +30,48 @@ const SAMPLES = {
   ],
 }
 
+const LANG_VOICE_PRIORITY = {
+  en: ['en-in', 'hinglish', 'hi', 'en-us'],
+  hi: ['hi', 'hinglish', 'en-in'],
+  hinglish: ['hinglish', 'en-in', 'hi', 'en-us'],
+}
+
+function normalizeVoiceLang(code) {
+  const c = (code || '').toLowerCase().replace('_', '-')
+  if (c === 'en' || c === 'english') return 'en-in'
+  if (c === 'hi' || c === 'hindi') return 'hi'
+  if (c === 'hinglish') return 'hinglish'
+  return c
+}
+
+function voicesForLanguage(voices, language) {
+  if (!voices?.length) return []
+  const prefs = LANG_VOICE_PRIORITY[language] || LANG_VOICE_PRIORITY.en
+  const ordered = []
+  const seen = new Set()
+  for (const pref of prefs) {
+    for (const v of voices) {
+      const lang = normalizeVoiceLang(v.language)
+      if (!seen.has(v.id) && (lang === pref || (pref === 'hi' && lang === 'hinglish'))) {
+        ordered.push(v)
+        seen.add(v.id)
+      }
+    }
+  }
+  for (const v of voices) {
+    if (!seen.has(v.id)) ordered.push(v)
+  }
+  return ordered
+}
+
+function pickVoiceForLanguage(voices, language) {
+  const pool = voicesForLanguage(voices, language)
+  if (!pool.length) return ''
+  const indian = pool.find((v) => v.id === 'astra_hinglish')
+  if ((language === 'hi' || language === 'hinglish') && indian) return indian.id
+  return pool[0].id
+}
+
 function apiErrorDetail(data, fallback = 'Request failed') {
   if (!data?.detail) return fallback
   if (typeof data.detail === 'string') return data.detail
@@ -77,6 +119,7 @@ export default function TtsLabPanel() {
         if (!res.ok) return
         const data = await res.json()
         setVoices(data.voices || [])
+        setVoiceId((prev) => prev || pickVoiceForLanguage(data.voices || [], language))
       } catch {
         /* optional */
       }
@@ -86,6 +129,7 @@ export default function TtsLabPanel() {
   const switchLanguage = (lang) => {
     setLanguage(lang)
     setText(SAMPLES[lang]?.[0] || '')
+    setVoiceId(pickVoiceForLanguage(voices, lang))
     revokeAudio()
     setStatus('')
     setStatusKind('')
@@ -317,8 +361,7 @@ export default function TtsLabPanel() {
               onChange={(e) => setVoiceId(e.target.value)}
               className="w-full rounded-xl border border-white/10 bg-[#1c2642] px-4 py-3 text-sm text-white outline-none focus:border-indigo-500"
             >
-              <option value="">Auto (by language)</option>
-              {voices.map((v) => (
+              {voicesForLanguage(voices, language).map((v) => (
                 <option key={v.id} value={v.id}>
                   {v.display_name || v.id} ({v.language})
                 </option>
@@ -328,7 +371,8 @@ export default function TtsLabPanel() {
 
           {(language === 'hi' || language === 'hinglish') && (
             <p className="text-xs text-emerald-400/90">
-              Use Devanagari for Hindi words — same as the interview.
+              Indian Hindi voice (Swara ref). Use Devanagari for Hindi words. MeloTTS is not used
+              for Hindi — F5 clones the Indian reference clip.
             </p>
           )}
 

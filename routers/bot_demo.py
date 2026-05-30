@@ -189,12 +189,14 @@ async def demo_tts(body: DemoTtsRequest):
     if lang not in ('en', 'hi', 'hinglish'):
         raise HTTPException(status_code=400, detail='language must be en, hi, or hinglish')
     try:
+        from engines.voice_registry import resolve_voice_for_tts
         from tts_worker import synthesize_wav_bytes
 
+        effective_voice = resolve_voice_for_tts(body.voice_id, reply_script=lang)
         audio, mime = await synthesize_wav_bytes(
             text,
             reply_script=lang,
-            voice_id=body.voice_id,
+            voice_id=effective_voice,
         )
     except Exception as exc:
         logger.exception('demo TTS failed language=%s', lang)

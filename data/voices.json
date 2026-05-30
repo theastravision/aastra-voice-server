@@ -12,7 +12,7 @@
     },
     {
       "id": "astra_hinglish",
-      "display_name": "Astra (Hinglish / Swara)",
+      "display_name": "Astra (Indian Hindi / Swara)",
       "language": "hinglish",
       "ref_audio": "assets/voices/astra_ref_hinglish.wav",
       "ref_text": "नमस्ते, मैं Astra हूँ। शुरू करने से पहले, screen share on रखें। मैं आज आपका technical interview लूँगी। कृपया अपना naam बताइए।",

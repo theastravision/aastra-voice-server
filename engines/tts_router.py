@@ -60,6 +60,19 @@ def resolve_tts_backend(reply_script: str | None) -> str:
     """Return synthesis backend id: f5 | xtts | melotts."""
     script = (reply_script or 'en').lower()
     if script in ('hi', 'hinglish'):
+        from engines.llm_script_contract import uses_devanagari_output
+
+        # MeloTTS has no Hindi model — EN-IND reads Devanagari like American English.
+        # F5 + astra_hinglish (Swara ref) gives Indian Hindi/Hinglish accent.
+        if uses_devanagari_output():
+            configured = resolve_hinglish_engine()
+            if configured in ('melotts', 'xtts'):
+                logger.info(
+                    'Devanagari %s TTS → F5 Indian voice clone (configured=%s)',
+                    script,
+                    configured,
+                )
+            return 'f5'
         hinglish = resolve_hinglish_engine()
         if hinglish == 'xtts':
             return 'xtts'

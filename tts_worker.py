@@ -143,11 +143,11 @@ async def synthesize_wav_bytes(
     """Synthesize full utterance to WAV using the active TTS backend for reply_script."""
     from engines.lang_detect import pick_tts_route_for_session
     from engines.tts_utils import pcm_s16le_to_wav
-    from engines.voice_registry import resolve_voice_for_language
+    from engines.voice_registry import resolve_voice_for_language, resolve_voice_for_tts
 
     script = reply_script if reply_script in ('en', 'hi', 'hinglish') else 'en'
     route = pick_tts_route_for_session(script, script)  # type: ignore[arg-type]
-    vid = voice_id or resolve_voice_for_language(route)
+    vid = resolve_voice_for_tts(voice_id, reply_script=script)
     worker = TtsWorker()
     await worker.start(language_hint=route, voice_id=vid)
 

@@ -276,6 +276,27 @@ def resolve_voice_for_language(language_hint: str | None) -> str:
     return reg.default_voice_id
 
 
+def resolve_voice_for_tts(
+    voice_id: str | None,
+    *,
+    reply_script: str | None,
+) -> str:
+    """Pick voice id for synthesis — Hindi/Hinglish must not use English-only ref."""
+    script = (reply_script or 'en').lower()
+    if script not in ('hi', 'hinglish'):
+        return voice_id or resolve_voice_for_language(script)
+    indian = resolve_voice_for_language(script)
+    if not voice_id or voice_id == 'astra':
+        return indian
+    profile = get_voice(voice_id)
+    if profile is None:
+        return indian
+    lang = normalize_voice_language(profile.language) or profile.language.lower()
+    if lang == 'en-in':
+        return indian
+    return voice_id
+
+
 def list_voices_for_language(language_hint: str | None) -> list[VoiceProfile]:
     """Voices suitable for the given UI language (ordered best-first)."""
     lang = normalize_voice_language(language_hint) or 'en-in'
