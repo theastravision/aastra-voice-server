@@ -187,9 +187,7 @@ async def ws_voice(websocket: WebSocket):
                 await session.on_listen_ready()
             elif msg_type == WsType.BARGE_IN.value:
                 offset = payload.get('offset_ms', 0.0)
-                await duplex.request_barge_in()
-                await session.handle_barge_in(offset)
-                await transport.send_json(json_event(WsType.BARGE_IN, ok=True))
+                await session.on_barge_in(offset)
             else:
                 await transport.send_json(json_event(WsType.ERROR, message=f'Unknown type: {msg_type}'))
 

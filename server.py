@@ -10,8 +10,10 @@ import uuid
 from collections.abc import Awaitable, Callable
 
 from config import (
+    BARGE_IN_THRESHOLD,
     BOT_MODE,
     OPENAI_MODEL,
+    STREAM_LISTEN_IDLE_MAX_SECS,
     STREAM_LISTEN_IDLE_SECS,
     STREAM_STT_MIN_CHARS,
 )
@@ -107,7 +109,7 @@ class InterviewSession:
         self._best_stt_text = ''
         self._empty_prompt_playing = False
         self._last_empty_prompt_at = 0.0
-        self._last_idle_nudge_at = 0.0
+        self._listen_idle_started_at: float | None = None
         self._idle_task: asyncio.Task | None = None
         self._turn_tasks: list[asyncio.Task] = []
         self._end_utterance_task: asyncio.Task | None = None
@@ -117,6 +119,8 @@ class InterviewSession:
         self._turn_audio_config_sent = False
         self._bus = event_bus if event_bus is not None else get_event_bus()
         self._closed = False
+        self._suppress_turn_end = False
+        self._server_barge_until = 0.0
         self._config_key = (
             language_hint,
             voice_id if voice_id else resolve_voice_for_language(language_hint),
@@ -218,7 +222,7 @@ class InterviewSession:
             await self._duplex.set_agent_speaking(False)
             await self._duplex.end_turn()
             if not self._closed:
-                await self._send_json(_evt('turn_end'))
+                await self._emit_turn_end()
             self._turn_audio_config_sent = False
             if not self._closed:
                 await self._state.begin_listening()
@@ -230,16 +234,56 @@ class InterviewSession:
             return
         await self._reset_stt_buffer()
         await self._state.begin_listening()
-        self._schedule_listen_idle()
+        self._schedule_listen_idle(fresh=True)
 
     async def _reset_stt_buffer(self) -> None:
         reset = getattr(self._stt, 'reset_buffer', None)
         if reset is not None:
             await reset()
 
+    async def _emit_turn_end(self) -> None:
+        if self._closed or self._suppress_turn_end:
+            self._suppress_turn_end = False
+            return
+        await self._send_json(_evt('turn_end'))
+        await self._bus.turn_event(self.session_id, 'turn_end')
+
     async def handle_barge_in(self, offset_ms: float) -> None:
+        await self.on_barge_in(offset_ms)
+
+    async def on_barge_in(self, offset_ms: float = 0.0) -> None:
+        """Stop in-flight TTS/LLM and unlock STT so the user can speak."""
+        if self._closed:
+            return
+        async with self._duplex.lock:
+            busy = self._duplex.agent_speaking or self._duplex.turn_in_progress
+        if not busy and not await self._state.is_locked():
+            return
+
         self._barge_in_offset_ms = offset_ms
+        self._suppress_turn_end = True
+        await self._cancel_active_turn()
+        await self._reset_stt_buffer()
+        self._pending_final = None
+        self._last_stt_text = ''
+        self._best_stt_text = ''
+        await self._state.begin_listening()
+        self._cancel_listen_idle()
         await self._bus.barge_in(self.session_id, offset_ms)
+        if not self._closed:
+            await self._send_json(_evt('barge_in', ok=True))
+
+    async def _maybe_server_barge_in(self, rms_energy: float) -> None:
+        async with self._duplex.lock:
+            if not self._duplex.agent_speaking:
+                return
+        if rms_energy <= BARGE_IN_THRESHOLD:
+            return
+        now = time.monotonic()
+        if now < self._server_barge_until:
+            return
+        self._server_barge_until = now + 0.45
+        await self.on_barge_in(0.0)
 
     def _note_stt_text(self, text: str, *, is_final: bool = False) -> None:
         cleaned = (text or '').strip()
@@ -256,12 +300,9 @@ class InterviewSession:
             return
         if rms_energy > 0.02:
             self._cancel_listen_idle()
+            self._listen_idle_started_at = None
         await self._duplex.push_incoming(chunk)
-        if await self._duplex.should_barge_in(rms_energy):
-            await self._duplex.request_barge_in()
-            await self._send_json(
-                '{"type":"barge_in","message":"User interrupted agent"}'
-            )
+        await self._maybe_server_barge_in(rms_energy)
 
         accept_stt = await self._state.accept_pcm_for_stt()
         async with self._duplex.lock:
@@ -450,8 +491,7 @@ class InterviewSession:
             await self._duplex.set_agent_speaking(False)
             await self._duplex.end_turn()
             if not self._closed:
-                await self._send_json(_evt('turn_end'))
-                await self._bus.turn_event(self.session_id, 'turn_end')
+                await self._emit_turn_end()
             self._turn_audio_config_sent = False
             if not self._closed:
                 await self._state.begin_listening()
@@ -523,8 +563,7 @@ class InterviewSession:
             await self._duplex.set_agent_speaking(False)
             await self._duplex.end_turn()
             if not self._closed:
-                await self._send_json(_evt('turn_end'))
-                await self._bus.turn_event(self.session_id, 'turn_end')
+                await self._emit_turn_end()
             self._turn_audio_config_sent = False
             if not self._closed:
                 await self._state.begin_listening()
@@ -563,7 +602,7 @@ class InterviewSession:
             await self._duplex.set_agent_speaking(False)
             await self._duplex.end_turn()
             if not self._closed:
-                await self._send_json(_evt('turn_end'))
+                await self._emit_turn_end()
             if not self._closed:
                 await self._state.begin_listening()
 
@@ -596,10 +635,12 @@ class InterviewSession:
             self._idle_task.cancel()
         self._idle_task = None
 
-    def _schedule_listen_idle(self) -> None:
+    def _schedule_listen_idle(self, *, fresh: bool = False) -> None:
         self._cancel_listen_idle()
         if STREAM_LISTEN_IDLE_SECS <= 0:
             return
+        if fresh or self._listen_idle_started_at is None:
+            self._listen_idle_started_at = time.monotonic()
         self._idle_task = asyncio.create_task(self._listen_idle_wait())
 
     async def _listen_idle_wait(self) -> None:
@@ -610,10 +651,11 @@ class InterviewSession:
             async with self._duplex.lock:
                 if self._duplex.agent_speaking or self._duplex.turn_in_progress:
                     return
-            now = time.monotonic()
-            if now - self._last_idle_nudge_at < 15.0:
-                return
-            self._last_idle_nudge_at = now
+            if self._listen_idle_started_at is not None:
+                elapsed = time.monotonic() - self._listen_idle_started_at
+                if elapsed >= STREAM_LISTEN_IDLE_MAX_SECS:
+                    self._listen_idle_started_at = None
+                    return
             await self._speak_listen_idle_nudge()
         except asyncio.CancelledError:
             pass
@@ -638,9 +680,10 @@ class InterviewSession:
             await self._duplex.set_agent_speaking(False)
             await self._duplex.end_turn()
             if not self._closed:
-                await self._send_json(_evt('turn_end'))
+                await self._emit_turn_end()
             if not self._closed:
                 await self._state.begin_listening()
+                self._schedule_listen_idle()
 
     async def _stream_cached_interjection(self, clip) -> None:
         try:

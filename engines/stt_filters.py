@@ -189,19 +189,19 @@ def is_repeat_intent(text: str) -> bool:
 
 
 def listen_idle_message(session_lang: SessionLanguage | None) -> tuple[str, str]:
-    """After ~8s silence: ask if candidate wants the question repeated."""
+    """After silence while waiting for an answer: offer repeat or more thinking time."""
     if session_lang == 'hi':
         return (
-            'Kya aap jawab dena chahenge? Kya main sawaal dohraoon?',
+            'Kya aap abhi bhi jawab soch rahe hain, ya main sawaal dohraoon?',
             'hi',
         )
     if session_lang == 'hinglish':
         return (
-            'Kya aap jawab dena chahenge? Kya main question repeat karoon?',
+            'Kya aap abhi bhi answer soch rahe hain, ya main question repeat karoon?',
             'hinglish',
         )
     return (
-        'Can you please reply? Would you like me to repeat the question for you?',
+        'Are you still thinking the answer, or would you like me to repeat this question?',
         'en',
     )
 

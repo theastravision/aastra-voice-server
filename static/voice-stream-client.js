@@ -272,7 +272,7 @@
     }
 
     _maybeBargeIn(level) {
-      if (!this._listenPaused || !this._isSpeaking) return;
+      if (!this._listenPaused) return;
       if (level < this._bargeInThreshold) {
         this._bargeInArmedAt = 0;
         return;

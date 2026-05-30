@@ -202,6 +202,8 @@ STREAM_STT_WINDOW_MS = int(os.environ.get('STREAM_STT_WINDOW_MS', '600'))
 STREAM_LLM_MIN_WORDS = int(os.environ.get('STREAM_LLM_MIN_WORDS', '5'))
 STREAM_LLM_NEXT_MIN_WORDS = int(os.environ.get('STREAM_LLM_NEXT_MIN_WORDS', '5'))
 STREAM_LISTEN_IDLE_SECS = float(os.environ.get('STREAM_LISTEN_IDLE_SECS', '8'))
+# Stop idle nudges after this many seconds of silence waiting for an answer.
+STREAM_LISTEN_IDLE_MAX_SECS = float(os.environ.get('STREAM_LISTEN_IDLE_MAX_SECS', '60'))
 STREAM_STT_MIN_CHARS = int(os.environ.get('STREAM_STT_MIN_CHARS', '4'))
 # Max utterance PCM kept for Whisper (seconds); longer answers are trimmed from the start.
 STT_UTTERANCE_MAX_SECS = int(os.environ.get('STT_UTTERANCE_MAX_SECS', '30'))
