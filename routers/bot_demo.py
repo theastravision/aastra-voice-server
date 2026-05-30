@@ -141,6 +141,43 @@ async def demo_edge_voices():
     }
 
 
+@router.post('/transcribe')
+async def demo_transcribe(
+    audio: UploadFile = File(...),
+    language: str = Form('en'),
+):
+    """Speech-to-text for TTS Lab mic (public demo)."""
+    _ensure_demo_enabled()
+    content = await audio.read()
+    if len(content) < 1024:
+        raise HTTPException(
+            status_code=422,
+            detail='Audio too short — speak for at least one second.',
+        )
+    lang = (language or 'en').lower().strip()
+    if lang not in ('en', 'hi', 'hinglish'):
+        lang = 'en'
+    try:
+        from engines.stt_filters import postprocess_stt_transcript
+        from engines.whisper_stt import transcribe_bytes
+
+        result = transcribe_bytes(
+            content,
+            filename=audio.filename or 'audio.webm',
+            language=lang,
+        )
+        text = postprocess_stt_transcript(result.get('text') or '')
+    except AudioDecodeError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception('demo STT failed language=%s', lang)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {
+        'text': text,
+        'detected_language': result.get('detected_language') or lang,
+    }
+
+
 @router.post('/tts')
 async def demo_tts(body: DemoTtsRequest):
     """Generate WAV audio for English, Hindi, or Hinglish (public demo)."""
