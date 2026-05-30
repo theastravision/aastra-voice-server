@@ -45,6 +45,11 @@ class TtsWorker:
             mgr = get_manager()
             mgr.set_active_voice(voice_id)
             mgr.reset_stream_state()
+        elif self._backend == 'melotts':
+            from engines.melo_tts_engine import get_manager as get_melo
+
+            mgr = get_melo()
+            mgr.set_active_voice(voice_id)
         else:
             from engines.xtts_engine import get_manager as get_xtts
 
@@ -74,6 +79,12 @@ class TtsWorker:
                     from engines.xtts_engine import get_manager as get_xtts
 
                     mgr = get_xtts()
+                    mgr.set_active_voice(voice_id)
+                    stream = mgr.synthesize_stream_sync(cleaned, reply_script=reply_script)
+                elif backend == 'melotts':
+                    from engines.melo_tts_engine import get_manager as get_melo
+
+                    mgr = get_melo()
                     mgr.set_active_voice(voice_id)
                     stream = mgr.synthesize_stream_sync(cleaned, reply_script=reply_script)
                 else:

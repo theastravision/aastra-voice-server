@@ -20,8 +20,6 @@ _EDGE_TTS_BY_LANGUAGE: dict[str, str] = {
     'en': 'en-IN-NeerjaNeural',
     'hinglish': 'hi-IN-SwaraNeural',
     'hi': 'hi-IN-SwaraNeural',
-    'bhojpuri': 'hi-IN-SwaraNeural',
-    'awadhi': 'hi-IN-SwaraNeural',
 }
 _DEFAULT_EDGE_TTS = 'en-IN-NeerjaNeural'
 

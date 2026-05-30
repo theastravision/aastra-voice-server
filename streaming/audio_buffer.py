@@ -7,6 +7,8 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 
+from config import BARGE_IN_THRESHOLD
+
 
 @dataclass
 class DuplexAudioState:
@@ -85,11 +87,12 @@ class DuplexAudioState:
             self.turn_in_progress = False
         self.cancel_generation.set()
 
-    async def should_barge_in(self, energy: float, threshold: float = 0.04) -> bool:
+    async def should_barge_in(self, energy: float, threshold: float | None = None) -> bool:
+        thresh = threshold if threshold is not None else BARGE_IN_THRESHOLD
         async with self.lock:
             if not self.agent_speaking:
                 return False
-            if energy > threshold:
+            if energy > thresh:
                 self.barge_in_requested = True
                 return True
             return self.barge_in_requested

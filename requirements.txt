@@ -29,3 +29,4 @@ datasets>=2.18.0
 evaluate>=0.4.0
 jiwer>=3.0.0
 indic-transliteration>=2.3.0
+melo @ git+https://github.com/myshell-ai/MeloTTS.git

@@ -8,7 +8,7 @@ from config import TTS_HINGLISH_ENGINE
 
 logger = logging.getLogger(__name__)
 
-HinglishEngine = str  # f5_devanagari | f5 | xtts
+HinglishEngine = str  # f5_devanagari | f5 | xtts | melotts
 
 
 def _xtts_ok() -> bool:
@@ -25,12 +25,12 @@ def resolve_hinglish_engine() -> HinglishEngine:
     if engine == 'xtts':
         if _xtts_ok():
             return 'xtts'
-        logger.warning('TTS_HINGLISH_ENGINE=xtts but coqui-tts unavailable; using f5_devanagari')
-        return 'f5_devanagari'
-    if engine in ('f5', 'f5_devanagari'):
+        logger.warning('TTS_HINGLISH_ENGINE=xtts but coqui-tts unavailable; using melotts')
+        return 'melotts'
+    if engine in ('f5', 'f5_devanagari', 'melotts'):
         return engine
-    logger.warning('Unknown TTS_HINGLISH_ENGINE=%r; using f5_devanagari', engine)
-    return 'f5_devanagari'
+    logger.warning('Unknown TTS_HINGLISH_ENGINE=%r; using melotts', engine)
+    return 'melotts'
 
 
 def resolve_tts_backend(reply_script: str | None) -> str:
@@ -40,4 +40,6 @@ def resolve_tts_backend(reply_script: str | None) -> str:
         hinglish = resolve_hinglish_engine()
         if hinglish == 'xtts':
             return 'xtts'
+        if hinglish == 'melotts':
+            return 'melotts'
     return 'f5'

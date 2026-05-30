@@ -35,8 +35,47 @@ function loadVoiceStreamClient() {
   })
 }
 
+async function fetchDemoConfig() {
+  const defaults = {
+    candidate_name: 'Aashish',
+    stt_provider: 'whisper_chunk',
+    tts_provider: 'f5',
+    interview_job_title: 'Software Engineer',
+    models_ready: true,
+    warmup_error: null,
+    interview_opening_enabled: true,
+  }
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/demo/config`)
+    if (res.ok) return { ...defaults, ...(await res.json()) }
+  } catch {
+    /* defaults */
+  }
+  return defaults
+}
+
+async function waitForModelsReady(initialCfg) {
+  let cfg = initialCfg
+  if (cfg.warmup_error) {
+    throw new Error(`Voice models failed to load: ${cfg.warmup_error}`)
+  }
+  if (cfg.models_ready === true) return cfg
+  for (let i = 0; i < 90 && cfg.models_ready !== true; i++) {
+    await new Promise((r) => setTimeout(r, 2000))
+    cfg = await fetchDemoConfig()
+    if (cfg.warmup_error) {
+      throw new Error(`Voice models failed to load: ${cfg.warmup_error}`)
+    }
+  }
+  if (cfg.models_ready !== true) {
+    throw new Error('Voice models are still loading. Please wait and try again.')
+  }
+  return cfg
+}
+
 const STATE_LABELS = {
   IDLE: 'Ready',
+  LOADING_MODELS: 'Loading voice models…',
   CONNECTING: 'Connecting…',
   LISTENING: 'Listening',
   THINKING: 'Thinking…',
@@ -55,6 +94,8 @@ const LANG_VOICE_PRIORITY = {
   hinglish: ['hinglish', 'en-in', 'hi', 'en-us'],
 }
 
+const ALLOWED_VOICE_LANGS = new Set(['en-in', 'hi', 'hinglish', 'en-us'])
+
 function normalizeVoiceLang(code) {
   const c = (code || '').toLowerCase().replace('_', '-')
   if (c === 'en' || c === 'english') return 'en-in'
@@ -65,33 +106,41 @@ function normalizeVoiceLang(code) {
   return c
 }
 
+function allowedVoices(voices) {
+  if (!voices?.length) return []
+  return voices.filter((v) => ALLOWED_VOICE_LANGS.has(normalizeVoiceLang(v.language)))
+}
+
 function pickVoiceForLanguage(voices, language) {
-  if (!voices?.length) return 'astra'
+  const pool = allowedVoices(voices)
+  if (!pool.length) return 'astra'
   const prefs = LANG_VOICE_PRIORITY[language] || LANG_VOICE_PRIORITY.en
   for (const pref of prefs) {
-    const match = voices.find((v) => normalizeVoiceLang(v.language) === pref)
+    const match = pool.find((v) => normalizeVoiceLang(v.language) === pref)
     if (match) return match.id
   }
-  return voices[0].id
+  return pool[0].id
+}
+
+function resolveVoiceId(voices, language, requestedId) {
+  const pool = allowedVoices(voices)
+  if (!pool.length) return requestedId || 'astra'
+  if (requestedId && pool.some((v) => v.id === requestedId)) return requestedId
+  return pickVoiceForLanguage(voices, language)
 }
 
 function voicesForLanguage(voices, language) {
-  if (!voices?.length) return [{ id: 'astra', display_name: 'Astra (US English)' }]
+  const pool = allowedVoices(voices)
+  if (!pool.length) return [{ id: 'astra', display_name: 'Astra (Indian English)' }]
   const prefs = LANG_VOICE_PRIORITY[language] || LANG_VOICE_PRIORITY.en
   const ordered = []
   const seen = new Set()
   for (const pref of prefs) {
-    for (const v of voices) {
+    for (const v of pool) {
       if (!seen.has(v.id) && normalizeVoiceLang(v.language) === pref) {
         ordered.push(v)
         seen.add(v.id)
       }
-    }
-  }
-  for (const v of voices) {
-    if (!seen.has(v.id)) {
-      ordered.push(v)
-      seen.add(v.id)
     }
   }
   return ordered
@@ -106,6 +155,9 @@ export default function AstraInterviewDashboard() {
   const [error, setError] = useState('')
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [wsReady, setWsReady] = useState(false)
+  const [modelsReady, setModelsReady] = useState(true)
+  const [warmupError, setWarmupError] = useState('')
+  const [openingEnabled, setOpeningEnabled] = useState(true)
   const [language, setLanguage] = useState(() => {
     try {
       return sessionStorage.getItem(LANG_STORAGE_KEY) || 'en'
@@ -149,6 +201,17 @@ export default function AstraInterviewDashboard() {
     }
     greetingPendingRef.current = false
   }, [])
+
+  const handleConnectionChange = useCallback((connected) => {
+    setWsReady(connected)
+    if (!connected && sessionStartedRef.current) {
+      setError('Connection lost. Please end the call and try again.')
+      setInterviewState('IDLE')
+      sessionStartedRef.current = false
+      greetingPendingRef.current = false
+      resolveGreetingWait()
+    }
+  }, [resolveGreetingWait])
 
   const handleEvent = useCallback(
     (msg, client) => {
@@ -238,41 +301,41 @@ export default function AstraInterviewDashboard() {
     setUserText('')
     setPartial('')
     setWsReady(false)
-    setInterviewState('CONNECTING')
+    setInterviewState('LOADING_MODELS')
 
+    let client = null
     try {
-      let activeVoice = voiceId
+      let cfg = await fetchDemoConfig()
+      setModelsReady(cfg.models_ready !== false)
+      setWarmupError(cfg.warmup_error || '')
+      if (cfg.interview_opening_enabled !== undefined) {
+        setOpeningEnabled(!!cfg.interview_opening_enabled)
+      }
 
-      let cfg = {
-        candidate_name: 'Aashish',
-        stt_provider: 'whisper_chunk',
-        tts_provider: 'f5',
-        interview_job_title: 'Software Engineer',
-      }
-      try {
-        const cfgRes = await fetch(`${API_BASE}/api/v1/demo/config`)
-        if (cfgRes.ok) cfg = { ...cfg, ...(await cfgRes.json()) }
-      } catch {
-        /* defaults */
-      }
+      cfg = await waitForModelsReady(cfg)
+      setModelsReady(true)
+      setWarmupError('')
+
       if (Array.isArray(cfg.voices) && cfg.voices.length) {
         setVoices(cfg.voices)
       }
       if (cfg.interview_job_title) setJobTitle(cfg.interview_job_title)
-      activeVoice = activeVoice || cfg.default_voice_id || cfg.voices?.[0]?.id || 'astra'
+
+      const activeVoice = resolveVoiceId(cfg.voices || voices, language, voiceId)
+      if (activeVoice !== voiceId) setVoiceId(activeVoice)
 
       sessionStorage.setItem(LANG_STORAGE_KEY, language)
-      sessionStorage.setItem(VOICE_STORAGE_KEY, activeVoice || voiceId)
+      sessionStorage.setItem(VOICE_STORAGE_KEY, activeVoice)
 
       const VoiceStreamClient = await loadVoiceStreamClient()
 
-      const client = new VoiceStreamClient({
+      client = new VoiceStreamClient({
         wsUrl: wsUrl(),
         vadThreshold: 0.028,
         bargeInThreshold: 0.045,
         onEvent: (msg) => handleEvent(msg, client),
         onError: (e) => setError(e.message || String(e)),
-        onConnectionChange: () => {},
+        onConnectionChange: handleConnectionChange,
         onSpeakingChange: setIsSpeaking,
         onEndUtterance: () => {
           setInterviewState('THINKING')
@@ -284,6 +347,9 @@ export default function AstraInterviewDashboard() {
       })
       clientRef.current = client
 
+      await client.ensurePlaybackReady(24000)
+
+      setInterviewState('CONNECTING')
       greetingPendingRef.current = true
       const greetingDone = waitForGreetingTurn()
 
@@ -301,12 +367,26 @@ export default function AstraInterviewDashboard() {
 
       sessionStartedRef.current = true
       client.setListenPaused(true)
-      await client.ensurePlaybackReady(24000)
-      await client.startMic()
+
+      try {
+        await client.startMic()
+      } catch (micErr) {
+        await client.disconnect()
+        clientRef.current = null
+        const msg =
+          micErr?.name === 'NotAllowedError'
+            ? 'Microphone access denied. Allow mic permission and try again.'
+            : micErr?.message || String(micErr)
+        throw new Error(msg)
+      }
 
       await greetingDone
       setInterviewState('LISTENING')
     } catch (e) {
+      if (clientRef.current) {
+        await clientRef.current.disconnect()
+        clientRef.current = null
+      }
       setError(e.message || String(e))
       setInterviewState('IDLE')
       sessionStartedRef.current = false
@@ -334,10 +414,21 @@ export default function AstraInterviewDashboard() {
 
   useEffect(() => {
     void loadVoiceStreamClient().catch(() => {})
+    void fetchDemoConfig().then((cfg) => {
+      if (Array.isArray(cfg.voices) && cfg.voices.length) {
+        setVoices(cfg.voices)
+      }
+      setModelsReady(cfg.models_ready !== false)
+      setWarmupError(cfg.warmup_error || '')
+      if (cfg.interview_opening_enabled !== undefined) {
+        setOpeningEnabled(!!cfg.interview_opening_enabled)
+      }
+      if (cfg.interview_job_title) setJobTitle(cfg.interview_job_title)
+    })
     void fetch(`${API_BASE}/api/v1/voices`)
       .then((r) => (r.ok ? r.json() : []))
       .then((list) => {
-        setVoices(Array.isArray(list) ? list : [])
+        if (Array.isArray(list) && list.length) setVoices(list)
       })
       .catch(() => {})
     return () => {
@@ -346,13 +437,39 @@ export default function AstraInterviewDashboard() {
   }, [])
 
   useEffect(() => {
+    if (modelsReady || warmupError) return undefined
+    let cancelled = false
+    const poll = async () => {
+      for (let i = 0; i < 90 && !cancelled; i++) {
+        await new Promise((r) => setTimeout(r, 2000))
+        const cfg = await fetchDemoConfig()
+        if (cancelled) return
+        if (cfg.warmup_error) {
+          setWarmupError(cfg.warmup_error)
+          return
+        }
+        if (cfg.models_ready === true) {
+          setModelsReady(true)
+          if (Array.isArray(cfg.voices) && cfg.voices.length) setVoices(cfg.voices)
+          return
+        }
+      }
+    }
+    void poll()
+    return () => {
+      cancelled = true
+    }
+  }, [modelsReady, warmupError])
+
+  useEffect(() => {
     if (!voices.length) return
-    const best = pickVoiceForLanguage(voices, language)
-    setVoiceId((current) => (current === best ? current : best))
+    const resolved = resolveVoiceId(voices, language, voiceId)
+    setVoiceId((current) => (current === resolved ? current : resolved))
   }, [language, voices])
 
   const statusLabel = STATE_LABELS[interviewState] || interviewState
   const callActive = interviewState !== 'IDLE'
+  const startDisabled = startingRef.current || (!modelsReady && !warmupError && interviewState === 'IDLE')
   const orbClass =
     interviewState === 'LISTENING'
       ? 'scale-105 shadow-[0_0_56px_rgba(99,102,241,0.45)] animate-pulse'
@@ -374,6 +491,21 @@ export default function AstraInterviewDashboard() {
 
         {!callActive && (
           <div className="px-6 pt-4">
+            {!modelsReady && !warmupError && (
+              <p className="mb-3 text-xs text-amber-400/90">
+                Loading voice models… Start call will wait until ready.
+              </p>
+            )}
+            {warmupError && (
+              <p className="mb-3 text-xs text-red-400/90">
+                Model warmup error: {warmupError}
+              </p>
+            )}
+            {openingEnabled && (
+              <p className="mb-3 text-xs text-[#8b95a8]">
+                Astra will ask for your name first before the technical interview.
+              </p>
+            )}
             <label className="block text-xs font-semibold uppercase tracking-wider text-indigo-400 mb-2">
               Interview language
             </label>
@@ -460,10 +592,10 @@ export default function AstraInterviewDashboard() {
             <button
               type="button"
               onClick={startCall}
-              disabled={startingRef.current}
+              disabled={startDisabled}
               className="w-full rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 py-3.5 font-semibold text-white shadow-lg transition-transform hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-60"
             >
-              Start call
+              {!modelsReady && !warmupError ? 'Loading models…' : 'Start call'}
             </button>
           ) : (
             <button

@@ -97,6 +97,11 @@ XTTS_SPEAKER_WAV = os.environ.get(
 XTTS_DEVICE = os.environ.get('XTTS_DEVICE', 'cuda').strip()
 XTTS_LANGUAGE = os.environ.get('XTTS_LANGUAGE', 'hi').strip()
 
+# MeloTTS (Hindi/Hinglish)
+MELOTTS_DEVICE = os.environ.get('MELOTTS_DEVICE', 'auto').strip()
+MELOTTS_SPEED = float(os.environ.get('MELOTTS_SPEED', '1.0'))
+MELOTTS_SPEAKER = os.environ.get('MELOTTS_SPEAKER', 'EN-BR').strip()
+
 # Legacy F5 bundled demo — must never be used (bleeds into every synthesis).
 _LEGACY_F5_REF_MARKERS = (
     'mother nature',
@@ -150,6 +155,7 @@ STREAM_STT_MIN_CHARS = int(os.environ.get('STREAM_STT_MIN_CHARS', '12'))
 STT_UTTERANCE_MAX_SECS = int(os.environ.get('STT_UTTERANCE_MAX_SECS', '90'))
 STT_TRANSCRIBE_TIMEOUT_SECS = float(os.environ.get('STT_TRANSCRIBE_TIMEOUT_SECS', '120'))
 STREAM_ALLOW_PUBLIC = os.environ.get('STREAM_ALLOW_PUBLIC', 'true').lower() in ('1', 'true', 'yes')
+BARGE_IN_THRESHOLD = float(os.environ.get('BARGE_IN_THRESHOLD', '0.04'))
 
 INTERJECTION_TIMEOUT_MS = int(os.environ.get('INTERJECTION_TIMEOUT_MS', '300'))
 
