@@ -23,7 +23,11 @@ from config import (
 )
 from engines.audio_normalize import normalize_pcm_s16le
 from engines.lang_detect import resolve_whisper_language
-from engines.stt_filters import is_phantom_stt_text, pick_best_stt_text
+from engines.stt_filters import (
+    is_phantom_stt_text,
+    pick_best_stt_text,
+    postprocess_stt_transcript,
+)
 from engines.stt_model_registry import resolve_whisper_path_for_language
 from engines.whisper_stt import _build_transcribe_kwargs, _ensure_ld_library_path
 from providers.base import SttEvent, StreamingSTT
@@ -135,6 +139,10 @@ class SttWorker(StreamingSTT):
     async def close(self) -> None:
         self._reset_utterance()
 
+    async def reset_buffer(self) -> None:
+        """Discard accumulated PCM (after bot speaks or stale session)."""
+        self._reset_utterance()
+
     def _reset_utterance(self) -> None:
         self._utterance_buffer.clear()
         self._last_detected_lang = None
@@ -176,7 +184,15 @@ class SttWorker(StreamingSTT):
                 )
                 self._reset_utterance()
                 return []
-            transcribed = (result.get('text') or '').strip()
+            transcribed = postprocess_stt_transcript(
+                (result.get('text') or '').strip()
+            )
+            duration_s = len(utterance_pcm) / _BYTES_PER_MS / 1000
+            if duration_s > 20:
+                logger.warning(
+                    'STT utterance %.1fs — trim STT_UTTERANCE_MAX_SECS or check mic/end_utterance',
+                    duration_s,
+                )
             if result.get('detected_language'):
                 detected_lang = result.get('detected_language')
             if transcribed and not is_phantom_stt_text(transcribed):

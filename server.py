@@ -88,7 +88,7 @@ class InterviewSession:
         self._name_retry_used = False
         self._intro_captured = False
         self._state = SessionStateMachine()
-        self._stt = create_stt(on_utterance_end=self.on_end_utterance)
+        self._stt = create_stt()
         self._llm = LlmWorker()
         self._tts = TtsWorker()
         self._pipeline = VoicePipeline(
@@ -203,7 +203,14 @@ class InterviewSession:
         """Client finished playing TTS — safe to start listen-idle timer."""
         if self._closed:
             return
+        await self._reset_stt_buffer()
+        await self._state.begin_listening()
         self._schedule_listen_idle()
+
+    async def _reset_stt_buffer(self) -> None:
+        reset = getattr(self._stt, 'reset_buffer', None)
+        if reset is not None:
+            await reset()
 
     async def handle_barge_in(self, offset_ms: float) -> None:
         self._barge_in_offset_ms = offset_ms
@@ -262,6 +269,7 @@ class InterviewSession:
         if await self._state.is_locked():
             return
         self._cancel_listen_idle()
+        await self._state.transition(SessionPhase.STT_PROCESSING)
         if self._end_utterance_task and not self._end_utterance_task.done():
             self._end_utterance_pending = True
             return
@@ -290,7 +298,6 @@ class InterviewSession:
                 await self._cancel_active_turn()
                 await asyncio.sleep(0.05)
 
-            await self._state.transition(SessionPhase.STT_PROCESSING)
             await self._send_json(_evt('stt_processing'))
 
             events = await self._stt.flush()
@@ -397,6 +404,7 @@ class InterviewSession:
         self._turn_audio_config_sent = False
         await self._duplex.begin_turn()
         await self._duplex.set_agent_speaking(True)
+        await self._reset_stt_buffer()
         await self._send_json(_evt('turn_start'))
         await self._bus.turn_event(self.session_id, 'turn_start')
         try:
@@ -426,6 +434,8 @@ class InterviewSession:
         self._turn_audio_config_sent = False
         await self._duplex.begin_turn()
         await self._duplex.set_agent_speaking(True)
+        await self._reset_stt_buffer()
+        self._turn_audio_config_sent = False
         await self._send_json(_evt('turn_start'))
         await self._bus.turn_event(self.session_id, 'turn_start')
         reply_script = pick_reply_script_for_session(

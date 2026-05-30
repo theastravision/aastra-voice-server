@@ -85,9 +85,10 @@ sync_pipeline_env() {
   upsert_env_key WHISPER_COMPUTE_TYPE float16
   upsert_env_key WHISPER_BEAM_SIZE 1
   upsert_env_key WHISPER_DEVICE cuda
-  upsert_env_key WHISPER_MODEL base
+  upsert_env_key WHISPER_MODEL distil-large-v3
+  upsert_env_key STT_SILERO_TRIGGER_END_UTTERANCE false
   upsert_env_key STREAM_STT_MIN_CHARS 4
-  upsert_env_key STT_UTTERANCE_MAX_SECS 90
+  upsert_env_key STT_UTTERANCE_MAX_SECS 30
   upsert_env_key STT_TRANSCRIBE_TIMEOUT_SECS 120
 
   # ── TTS: F5 English + Hinglish reference clips (no duplicate F5_REF_AUDIO) ─

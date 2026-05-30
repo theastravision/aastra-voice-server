@@ -105,3 +105,31 @@ async def demo_end(session_id: str = Form(...)):
     _ensure_demo_enabled()
     return demo_bot.end_session(session_id)
 
+
+@router.get('/interview-names')
+async def demo_interview_names():
+    _ensure_demo_enabled()
+    from engines.name_samples import list_interview_name_entries
+
+    entries = list_interview_name_entries()
+    return {
+        'names': entries,
+        'total': len(entries),
+        'with_audio': sum(1 for e in entries if e.get('has_audio')),
+        'samples_dir': 'data/name-samples',
+    }
+
+
+@router.get('/edge-voices')
+async def demo_edge_voices():
+    _ensure_demo_enabled()
+    from engines.name_samples import list_edge_voice_entries
+
+    entries = list_edge_voice_entries()
+    return {
+        'voices': entries,
+        'total': len(entries),
+        'with_audio': sum(1 for e in entries if e.get('has_audio')),
+        'samples_dir': 'data/voice-samples',
+    }
+

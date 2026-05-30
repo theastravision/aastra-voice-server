@@ -8,6 +8,7 @@ from enum import Enum
 from config import BOT_MODE, INTERVIEW_JOB_TITLE, INTERVIEW_OPENING_ENABLED
 from engines.lang_detect import ReplyScript, SessionLanguage
 from engines.llm_script_contract import uses_devanagari_output
+from engines.stt_names import closest_name
 
 _NAME_PATTERNS = (
     re.compile(
@@ -225,6 +226,9 @@ def _clean_name(raw: str) -> str | None:
     if not parts:
         return None
     name = ' '.join(parts[:3]).title()
+    corrected = closest_name(name)
+    if corrected:
+        name = corrected
     if name.lower() in _NOT_NAME_WORDS:
         return None
     if len(name) < 2:

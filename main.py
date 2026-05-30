@@ -64,6 +64,22 @@ _static_dir = Path(__file__).resolve().parent / 'static'
 if _static_dir.is_dir():
     app.mount('/static', StaticFiles(directory=str(_static_dir)), name='static')
 
+_data_root = Path(__file__).resolve().parent / 'data'
+_name_samples_dir = _data_root / 'name-samples'
+if _name_samples_dir.is_dir():
+    app.mount(
+        '/data/name-samples',
+        StaticFiles(directory=str(_name_samples_dir)),
+        name='name-samples',
+    )
+_voice_samples_dir = _data_root / 'voice-samples'
+if _voice_samples_dir.is_dir():
+    app.mount(
+        '/data/voice-samples',
+        StaticFiles(directory=str(_voice_samples_dir)),
+        name='voice-samples',
+    )
+
 _interview_dist = Path(__file__).resolve().parent / 'interview-ui' / 'dist'
 
 
@@ -90,6 +106,20 @@ def bot_demo_page():
             'X-Tts-Provider': TTS_PROVIDER,
         },
     )
+
+
+@app.get('/bot/names')
+def bot_name_samples_page():
+    from config import ALLOW_PUBLIC_DEMO
+    from fastapi import HTTPException
+    from fastapi.responses import FileResponse
+
+    if not ALLOW_PUBLIC_DEMO:
+        raise HTTPException(status_code=403, detail='Demo disabled')
+    path = Path(__file__).resolve().parent / 'static' / 'name-samples.html'
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail='Name samples UI missing')
+    return FileResponse(path, media_type='text/html')
 
 
 @app.get('/interview', include_in_schema=False)

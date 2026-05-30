@@ -6,7 +6,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 
-from engines.audio_normalize import normalize_pcm_s16le
+from config import STT_SILERO_TRIGGER_END_UTTERANCE
 from engines.silero_vad import SileroVadGate
 from providers.base import SttEvent, StreamingSTT
 from stt_worker import SttWorker
@@ -38,6 +38,10 @@ class SileroWhisperSTT(StreamingSTT):
             self._end_task.cancel()
         await self._worker.close()
 
+    async def reset_buffer(self) -> None:
+        self._vad.reset()
+        await self._worker.reset_buffer()
+
     async def push_pcm(self, chunk: bytes, **kwargs) -> list[SttEvent]:
         del kwargs
         gated, utterance_end = self._vad.push_pcm(chunk)
@@ -45,7 +49,7 @@ class SileroWhisperSTT(StreamingSTT):
         if gated:
             normalized = normalize_pcm_s16le(gated)
             events.extend(await self._worker.push_pcm(normalized))
-        if utterance_end and self._on_utterance_end is not None:
+        if utterance_end and self._on_utterance_end is not None and STT_SILERO_TRIGGER_END_UTTERANCE:
             self._schedule_utterance_end()
         return events
 

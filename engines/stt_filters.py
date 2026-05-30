@@ -57,9 +57,15 @@ _PHANTOM_SUBSTR = (
 
 _REPEAT_INTENT = re.compile(
     r'\b('
-    r'yes|yeah|yep|please repeat|repeat (the )?question|say (it )?again|'
-    r'can you repeat|repeat please|once more|dobara|phir se|haan|haan ji'
+    r'please repeat|repeat (the )?question|say (it )?again|'
+    r'can you repeat|repeat please|once more|dobara|phir se|'
+    r'question repeat|sawaal dohra'
     r')\b',
+    re.IGNORECASE,
+)
+
+_SHORT_AFFIRM = re.compile(
+    r'^(yes|yeah|yep|haan|haan ji)[\s,.!?]*$',
     re.IGNORECASE,
 )
 
@@ -117,8 +123,69 @@ def pick_best_stt_text(*candidates: str | None, min_chars: int | None = None) ->
     return best
 
 
+def dedupe_repeated_sentences(text: str) -> str:
+    """Collapse duplicate sentences/clauses from Whisper echo or double-flush."""
+    cleaned = (text or '').strip()
+    if not cleaned:
+        return ''
+    cleaned = _collapse_duplicate_halves(cleaned)
+    parts = re.split(r'(?<=[.!?])\s+', cleaned)
+    if len(parts) <= 1:
+        return cleaned
+    out: list[str] = []
+    prev_norm = ''
+    for part in parts:
+        p = part.strip()
+        if not p:
+            continue
+        norm = normalize_stt_text(p)
+        if norm and norm != prev_norm:
+            out.append(p if p[-1] in '.!?' else f'{p}.')
+            prev_norm = norm
+    joined = ' '.join(out).strip()
+    if not joined:
+        return cleaned
+    return joined.rstrip('.') + '.' if joined[-1] not in '.!?' else joined
+
+
+def _collapse_duplicate_halves(text: str) -> str:
+    """If transcript is two near-identical halves, keep one."""
+    norm_full = normalize_stt_text(text)
+    words = text.split()
+    if len(words) < 6:
+        return text
+    mid = len(words) // 2
+    first = normalize_stt_text(' '.join(words[:mid]))
+    second = normalize_stt_text(' '.join(words[mid:]))
+    if first and first == second:
+        return ' '.join(words[:mid])
+    if len(first) > 12 and (first in second or second in first):
+        return ' '.join(words[:mid])
+    return text
+
+
+def postprocess_stt_transcript(text: str) -> str:
+    """Dedupe + name correction pipeline."""
+    from engines.stt_names import correct_names_in_transcript
+
+    cleaned = dedupe_repeated_sentences((text or '').strip())
+    return correct_names_in_transcript(cleaned)
+
+
 def is_repeat_intent(text: str) -> bool:
-    return bool(_REPEAT_INTENT.search(text or ''))
+    """True only for short repeat requests — not when echo pollutes a real answer."""
+    cleaned = (text or '').strip()
+    if not cleaned:
+        return False
+    if re.search(
+        r'\b(my name is|mera naam|i am|i\'m|main hoon|this is)\b',
+        cleaned,
+        re.IGNORECASE,
+    ):
+        return False
+    if _REPEAT_INTENT.search(cleaned):
+        return len(cleaned) <= 80
+    return len(cleaned) <= 24 and bool(_SHORT_AFFIRM.match(cleaned))
 
 
 def listen_idle_message(session_lang: SessionLanguage | None) -> tuple[str, str]:

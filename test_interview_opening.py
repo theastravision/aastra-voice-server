@@ -36,6 +36,8 @@ def test_extract_name_english():
 def test_extract_name_hinglish():
     assert extract_candidate_name('Mera naam Priya hai') == 'Priya'
     assert extract_candidate_name('Main Aashish hoon') == 'Aashish'
+    assert extract_candidate_name('My name is Awish') == 'Ashish'
+    assert extract_candidate_name('My name is Asheesh') == 'Ashish'
 
 
 def test_welcome_uses_name():

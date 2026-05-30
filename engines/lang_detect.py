@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Literal
 
-from config import HINGLISH_VOCAB_DIR, TTS_OUTPUT_SCRIPT, WHISPER_INITIAL_PROMPT, WHISPER_LANGUAGE
+from engines.stt_names import whisper_names_prompt
 
 ReplyScript = Literal['en', 'hi', 'hinglish']
 TtsRoute = Literal['en', 'hi', 'hinglish']
@@ -84,8 +84,8 @@ def resolve_whisper_language(explicit: str | None = None) -> str | None:
 
 _WHISPER_INTERVIEW_EN_PROMPT = (
     'Technical software engineering interview in English. '
-    'Terms: software development, programming, APIs, databases, system design, '
-    'debugging, deployment, microservices, frontend, backend.'
+    'Terms: software development, programming, APIs, databases, system design. '
+    + whisper_names_prompt(40)
 )
 
 
@@ -98,16 +98,16 @@ def _generated_whisper_prompt() -> str | None:
 
 
 def whisper_initial_prompt(language: str | None) -> str | None:
+    names = whisper_names_prompt(36)
     if language == 'hi':
-        return 'यह हिंदी भाषा में तकनीकी साक्षात्कार की बातचीत है।'
+        return f'यह हिंदी में तकनीकी साक्षात्कार है। {names}'
     if language == 'en':
         return _WHISPER_INTERVIEW_EN_PROMPT
     generated = _generated_whisper_prompt()
-    if generated and (WHISPER_LANGUAGE == 'auto' or not language):
-        return generated
+    base = WHISPER_INITIAL_PROMPT or generated or ''
     if WHISPER_LANGUAGE == 'auto' or not language:
-        return WHISPER_INITIAL_PROMPT or generated
-    return WHISPER_INITIAL_PROMPT or generated
+        return f'{base} {names}'.strip() if base else names
+    return f'{base} {names}'.strip() if base else names
 
 
 def pick_reply_script_for_session(

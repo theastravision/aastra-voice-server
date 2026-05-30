@@ -34,6 +34,10 @@ STT_MIN_SPEECH_MS = int(os.environ.get('STT_MIN_SPEECH_MS', '300'))
 STT_SILENCE_END_MS = int(os.environ.get('STT_SILENCE_END_MS', '900'))
 STREAM_SILENCE_END_MS = int(os.environ.get('STREAM_SILENCE_END_MS', '900'))
 SILERO_VAD_THRESHOLD = float(os.environ.get('SILERO_VAD_THRESHOLD', '0.5'))
+# When false (default): only browser end_utterance ends a turn; Silero gates noise only.
+STT_SILERO_TRIGGER_END_UTTERANCE = os.environ.get(
+    'STT_SILERO_TRIGGER_END_UTTERANCE', 'false'
+).lower() in ('1', 'true', 'yes')
 WHISPER_VAD_FILTER = os.environ.get('WHISPER_VAD_FILTER', 'true').lower() in (
     '1',
     'true',
@@ -200,7 +204,7 @@ STREAM_LLM_NEXT_MIN_WORDS = int(os.environ.get('STREAM_LLM_NEXT_MIN_WORDS', '5')
 STREAM_LISTEN_IDLE_SECS = float(os.environ.get('STREAM_LISTEN_IDLE_SECS', '8'))
 STREAM_STT_MIN_CHARS = int(os.environ.get('STREAM_STT_MIN_CHARS', '4'))
 # Max utterance PCM kept for Whisper (seconds); longer answers are trimmed from the start.
-STT_UTTERANCE_MAX_SECS = int(os.environ.get('STT_UTTERANCE_MAX_SECS', '90'))
+STT_UTTERANCE_MAX_SECS = int(os.environ.get('STT_UTTERANCE_MAX_SECS', '30'))
 STT_TRANSCRIBE_TIMEOUT_SECS = float(os.environ.get('STT_TRANSCRIBE_TIMEOUT_SECS', '120'))
 STREAM_ALLOW_PUBLIC = os.environ.get('STREAM_ALLOW_PUBLIC', 'true').lower() in ('1', 'true', 'yes')
 BARGE_IN_THRESHOLD = float(os.environ.get('BARGE_IN_THRESHOLD', '0.04'))
