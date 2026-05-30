@@ -217,22 +217,16 @@ patch_env_tts() {
 
 ensure_astra_reference() {
   local legacy=0
-  if grep -qiE 'mother nature|silent spectator|some call me nature' "$ROOT/.env" 2>/dev/null; then
-    echo "WARN: Legacy F5_REF_TEXT in .env — updating to Astra default"
-    if command -v sed >/dev/null 2>&1; then
-      sed -i.bak 's/^F5_REF_TEXT=.*/F5_REF_TEXT=Hello, I am Astra. I will conduct your technical interview today./' "$ROOT/.env" 2>/dev/null || legacy=1
-    else
-      legacy=1
-    fi
-  fi
+  local force=""
   if grep -qiE 'mother nature|silent spectator|some call me nature' "$ROOT/data/voices.json" 2>/dev/null; then
     legacy=1
   fi
-  if [[ ! -f "$ROOT/assets/voices/astra_ref.wav" ]] || [[ "$legacy" -eq 1 ]]; then
-    echo "Regenerating Astra reference audio (Neerja / en-IN-NeerjaNeural)…"
-    pip install -q edge-tts 2>/dev/null || true
-    "$ROOT/.venv/bin/python" "$ROOT/scripts/setup_ref_audio.py" --force || true
+  if [[ "$legacy" -eq 1 ]]; then
+    force="--force"
   fi
+  echo "Ensuring reference WAVs from data/voices.json…"
+  pip install -q edge-tts 2>/dev/null || true
+  "$ROOT/.venv/bin/python" "$ROOT/scripts/setup_ref_audio.py" $force || true
 }
 
 stop_all() {

@@ -6,7 +6,7 @@
       "display_name": "Astra (Neerja / Indian English)",
       "language": "en-in",
       "ref_audio": "assets/voices/astra_ref.wav",
-      "ref_text": "Hello, I am Astra. I will conduct your technical interview today.",
+      "ref_text": "Hello! My name is Astra. Please keep sharing your screen; you may check it. Whenever you are ready, we can begin the interview.",
       "source": "edge-tts-neerja",
       "created_at": "2026-05-29T00:00:00+00:00"
     },
@@ -15,8 +15,26 @@
       "display_name": "Astra (Hinglish bilingual ref)",
       "language": "hinglish",
       "ref_audio": "assets/voices/astra_ref_hinglish.wav",
-      "ref_text": "Namaste, main Astra hoon. Shuru karne se pehle, screen share on rakhein. I will conduct your technical interview today. Kripya apna naam batayiye.",
+      "ref_text": "Namaste! Mera naam Astra hai. Kripya apna drishya-patal saanjha rakhna jaari rakhiye, aap jaanch kar sakte hain. Jab bhi aap taiyar hon, hum sakshatkar aarambh kar sakte hain.",
       "source": "edge-tts-neerja-bilingual",
+      "created_at": "2026-05-29T00:00:00+00:00"
+    },
+    {
+      "id": "astra_bhojpuri",
+      "display_name": "Astra (Bhojpuri ref)",
+      "language": "bhojpuri",
+      "ref_audio": "assets/voices/astra_ref_bhojpuri.wav",
+      "ref_text": "Pranam! Hamaar naam Astra ba. Kripya apna drishya-patal saanjha rakhe ke jaari rakhi, rauaa jaanch kar sakat bani. Jab rauaa taiyar ho jai, tab humni sakshatkar aarambh kar sakat bani.",
+      "source": "regional-voice-bhojpuri",
+      "created_at": "2026-05-29T00:00:00+00:00"
+    },
+    {
+      "id": "astra_awadhi",
+      "display_name": "Astra (Awadhi ref)",
+      "language": "awadhi",
+      "ref_audio": "assets/voices/astra_ref_awadhi.wav",
+      "ref_text": "Namaste! Hamaye naav Astra aahaay. Aap aapan drishya-patal saanjha rakhiha, aap dekh sakat thein. Jab aap taiyar hoi jaayen, tab hum sakshatkar aarambh kar sakat hain.",
+      "source": "regional-voice-awadhi",
       "created_at": "2026-05-29T00:00:00+00:00"
     }
   ]
