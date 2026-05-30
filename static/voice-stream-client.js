@@ -5,7 +5,7 @@
   const TARGET_SR = 16000;
   const CHUNK_MS = 100;
   const SAMPLES_PER_CHUNK = Math.floor(TARGET_SR * CHUNK_MS / 1000);
-  const SILENCE_END_MS = 2500;
+  const DEFAULT_SILENCE_END_MS = 900;
   const MIN_SPEECH_MS = 500;
   const END_COOLDOWN_MS = 1200;
   const BARGE_IN_DEBOUNCE_MS = 300;
@@ -60,6 +60,7 @@
       this.turnPlaybackStartTime = 0;
       this._bargeInArmedAt = 0;
       this._playbackSources = [];
+      this._silenceEndMs = options.silenceEndMs ?? DEFAULT_SILENCE_END_MS;
     }
 
     setListenPaused(paused) {
@@ -333,7 +334,7 @@
           }
           if (
             this.speechMs >= MIN_SPEECH_MS &&
-            this.silenceMs >= SILENCE_END_MS
+            this.silenceMs >= this._silenceEndMs
           ) {
             this.endUtterance();
           }

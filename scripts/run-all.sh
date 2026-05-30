@@ -16,6 +16,9 @@
 #   # Force full reinstall:
 #   bash scripts/run-all.sh --install
 #
+#   # Refresh pipeline .env keys only (no server start):
+#   bash scripts/sync-env.sh
+#
 #   # Skip ngrok tunnel:
 #   bash scripts/run-all.sh --no-ngrok
 #
@@ -65,8 +68,11 @@ load_env_file "$ROOT/.env" 2>/dev/null || true
 
 export HOST="${HOST:-*}"
 export PORT="${PORT:-8000}"
-export STT_VAD_SILENCE_MS="800"
-export WHISPER_VAD_FILTER="true"
+
+# Upsert optimized pipeline env keys into .env every run (Ubuntu sed -i)
+sync_pipeline_env() {
+  bash "$ROOT/scripts/sync-env.sh" "$ROOT/.env"
+}
 
 step() {
   echo ""
@@ -194,6 +200,7 @@ install_all() {
   bash "$ROOT/scripts/install-f5-tts.sh"
 
   bash "$ROOT/scripts/salad-append-env.sh" 2>/dev/null || true
+  bash "$ROOT/scripts/sync-env.sh" "$ROOT/.env"
   load_env_file "$ROOT/.env"
 
   echo "First-time install complete."
@@ -201,8 +208,10 @@ install_all() {
 
 patch_env_tts() {
   ensure_env
+  sync_pipeline_env
   load_env_file "$ROOT/.env"
   bash "$ROOT/scripts/salad-append-env.sh" 2>/dev/null || true
+  sync_pipeline_env
   load_env_file "$ROOT/.env"
   if [[ ! -d "$ROOT/.venv" ]]; then
     echo "ERROR: No .venv — run: bash scripts/run-all.sh --install"
@@ -329,8 +338,9 @@ print_summary() {
 
 step 1 "Environment"
 ensure_env
-load_env_file "$ROOT/.env"
+sync_pipeline_env
 bash "$ROOT/scripts/salad-append-env.sh" 2>/dev/null || true
+sync_pipeline_env
 load_env_file "$ROOT/.env"
 chmod +x "$ROOT/scripts/"*.sh 2>/dev/null || true
 

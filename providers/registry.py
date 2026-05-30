@@ -9,7 +9,7 @@ from providers.base import StreamingSTT, StreamingTTS
 
 logger = logging.getLogger(__name__)
 
-_OSS_STT = frozenset({'whisper', 'whisper_chunk', 'whisper-live'})
+_OSS_STT = frozenset({'whisper', 'whisper_chunk', 'whisper-live', 'silero_whisper'})
 _TTS_PROVIDERS = frozenset({'f5', 'xtts', 'auto'})
 
 
@@ -45,18 +45,26 @@ def resolve_tts_provider(name: str | None = None) -> str:
     return resolved
 
 
-def create_stt(provider: str | None = None) -> StreamingSTT:
+def create_stt(
+    provider: str | None = None,
+    *,
+    on_utterance_end=None,
+) -> StreamingSTT:
     name = (provider or STT_PROVIDER).lower()
     if name == 'auto':
-        name = 'whisper_chunk'
+        name = 'whisper'
     if name not in _OSS_STT:
         raise ValueError(
-            f'Unknown STT_PROVIDER={name!r}. Use whisper_chunk (open-source).'
+            f'Unknown STT_PROVIDER={name!r}. Use whisper, silero_whisper, or whisper_chunk.'
         )
     if name == 'whisper_chunk':
         from providers.stt_whisper_chunk import WhisperChunkSTT
 
         return WhisperChunkSTT()
+    if name in ('whisper', 'silero_whisper'):
+        from providers.stt_silero_whisper import SileroWhisperSTT
+
+        return SileroWhisperSTT(on_utterance_end=on_utterance_end)
     from stt_worker import SttWorker
 
     return SttWorker()
@@ -87,7 +95,7 @@ def create_tts(provider: str | None = None) -> StreamingTTS:
 
 
 def auto_stt_provider() -> str:
-    return 'whisper_chunk' if STT_PROVIDER == 'auto' else STT_PROVIDER
+    return 'whisper' if STT_PROVIDER == 'auto' else STT_PROVIDER
 
 
 def auto_tts_provider() -> str:

@@ -29,9 +29,12 @@ WHISPER_INITIAL_PROMPT = os.environ.get(
     ),
 ).strip()
 
-STT_VAD_SILENCE_MS = int(os.environ.get('STT_VAD_SILENCE_MS', '600'))
+STT_VAD_SILENCE_MS = int(os.environ.get('STT_VAD_SILENCE_MS', '500'))
 STT_MIN_SPEECH_MS = int(os.environ.get('STT_MIN_SPEECH_MS', '300'))
-WHISPER_VAD_FILTER = os.environ.get('WHISPER_VAD_FILTER', 'false').lower() in (
+STT_SILENCE_END_MS = int(os.environ.get('STT_SILENCE_END_MS', '900'))
+STREAM_SILENCE_END_MS = int(os.environ.get('STREAM_SILENCE_END_MS', '900'))
+SILERO_VAD_THRESHOLD = float(os.environ.get('SILERO_VAD_THRESHOLD', '0.5'))
+WHISPER_VAD_FILTER = os.environ.get('WHISPER_VAD_FILTER', 'true').lower() in (
     '1',
     'true',
     'yes',
@@ -55,7 +58,7 @@ INTERVIEW_OPENING_ENABLED = os.environ.get('INTERVIEW_OPENING_ENABLED', 'true').
     'yes',
 )
 
-# F5-TTS reference clip transcript (must match spoken content in F5_REF_AUDIO WAV exactly).
+# F5-TTS reference clip transcripts (must match spoken content in WAV exactly).
 ASTRA_DEFAULT_REF_TEXT = (
     'Hello, I am Astra. I will conduct your technical interview today.'
 )
@@ -100,7 +103,7 @@ XTTS_LANGUAGE = os.environ.get('XTTS_LANGUAGE', 'hi').strip()
 # MeloTTS (Hindi/Hinglish)
 MELOTTS_DEVICE = os.environ.get('MELOTTS_DEVICE', 'auto').strip()
 MELOTTS_SPEED = float(os.environ.get('MELOTTS_SPEED', '1.0'))
-MELOTTS_SPEAKER = os.environ.get('MELOTTS_SPEAKER', 'EN-BR').strip()
+MELOTTS_SPEAKER = os.environ.get('MELOTTS_SPEAKER', 'EN-IND').strip()
 
 # Legacy F5 bundled demo — must never be used (bleeds into every synthesis).
 _LEGACY_F5_REF_MARKERS = (
@@ -116,32 +119,77 @@ def is_legacy_f5_ref_text(text: str | None) -> bool:
 
 # F5-TTS + Vocos — sole TTS engine
 F5_MODEL = os.environ.get('F5_MODEL', 'F5TTS_v1_Base').strip()
-F5_NFE_STEPS = int(os.environ.get('F5_NFE_STEPS', '18'))
+F5_NFE_STEPS = int(os.environ.get('F5_NFE_STEPS', '12'))
 F5_SWAY_COEF = float(os.environ.get('F5_SWAY_COEF', '-1.0'))
-F5_REF_AUDIO = os.environ.get(
-    'F5_REF_AUDIO',
-    str(_ROOT / 'assets' / 'voices' / 'astra_ref.wav'),
+# F5-TTS reference clips — separate English vs Hinglish (must match WAV transcript exactly).
+F5_REF_AUDIO_EN = os.environ.get(
+    'F5_REF_AUDIO_EN',
+    os.environ.get(
+        'F5_REF_AUDIO',
+        str(_ROOT / 'assets' / 'voices' / 'astra_ref.wav'),
+    ),
 ).strip()
-F5_REF_TEXT = os.environ.get('F5_REF_TEXT', ASTRA_DEFAULT_REF_TEXT).strip()
-if is_legacy_f5_ref_text(F5_REF_TEXT):
-    import logging as _logging
+F5_REF_TEXT_EN = os.environ.get(
+    'F5_REF_TEXT_EN',
+    os.environ.get('F5_REF_TEXT', ASTRA_DEFAULT_REF_TEXT),
+).strip()
+F5_REF_AUDIO_HINGLISH = os.environ.get(
+    'F5_REF_AUDIO_HINGLISH',
+    str(_ROOT / 'assets' / 'voices' / 'astra_ref_hinglish.wav'),
+).strip()
+F5_REF_TEXT_HINGLISH = os.environ.get(
+    'F5_REF_TEXT_HINGLISH',
+    ASTRA_HINGLISH_BILINGUAL_REF_TEXT,
+).strip()
 
-    _logging.getLogger(__name__).warning(
-        'F5_REF_TEXT uses legacy F5 demo transcript; replacing with ASTRA_DEFAULT_REF_TEXT. '
-        'Regenerate audio: python scripts/setup_ref_audio.py --force'
-    )
-    F5_REF_TEXT = ASTRA_DEFAULT_REF_TEXT
+for _label, _text in (
+    ('F5_REF_TEXT_EN', F5_REF_TEXT_EN),
+    ('F5_REF_TEXT_HINGLISH', F5_REF_TEXT_HINGLISH),
+):
+    if is_legacy_f5_ref_text(_text):
+        import logging as _logging
+
+        _logging.getLogger(__name__).warning(
+            '%s uses legacy F5 demo transcript; check scripts/setup_ref_audio.py --force',
+            _label,
+        )
+
+# Deprecated aliases — prefer F5_REF_*_EN / F5_REF_*_HINGLISH
+F5_REF_AUDIO = F5_REF_AUDIO_EN
+F5_REF_TEXT = F5_REF_TEXT_EN
 F5_DTYPE = os.environ.get('F5_DTYPE', 'float16').strip()
 F5_VOCODER = os.environ.get('F5_VOCODER', 'vocos').strip()
 # < 1.0 = slower speech; > 1.0 = faster (F5-TTS duration control)
-F5_SPEED = float(os.environ.get('F5_SPEED', '0.85'))
+F5_SPEED = float(os.environ.get('F5_SPEED', '1.0'))
 F5_CROSS_FADE_DURATION = float(os.environ.get('F5_CROSS_FADE_DURATION', '0.15'))
 # Skip F5 first-package mini split for utterances at or below this length (smoother greetings)
 F5_NO_SPLIT_MAX_CHARS = int(os.environ.get('F5_NO_SPLIT_MAX_CHARS', '120'))
 F5_CKPT_FILE = os.environ.get('F5_CKPT_FILE', '').strip()
 F5_HF_CACHE_DIR = os.environ.get('F5_HF_CACHE_DIR', '').strip() or None
 
-STT_PROVIDER = os.environ.get('STT_PROVIDER', 'whisper_chunk').strip().lower()
+
+def resolve_f5_ref_paths(
+    *,
+    reply_script: str | None = None,
+    voice_id: str | None = None,
+    language: str | None = None,
+) -> tuple[str, str]:
+    """Return (ref_audio_path, ref_text) for English vs Hinglish/Hindi F5 conditioning."""
+    script = (reply_script or '').lower()
+    lang = (language or '').lower().replace('_', '-')
+    vid = (voice_id or '').lower()
+
+    hinglish = (
+        vid in ('astra_hinglish', 'hinglish')
+        or script in ('hi', 'hinglish', 'devanagari')
+        or lang in ('hi', 'hinglish', 'hindi')
+    )
+    if hinglish:
+        return F5_REF_AUDIO_HINGLISH, F5_REF_TEXT_HINGLISH
+    return F5_REF_AUDIO_EN, F5_REF_TEXT_EN
+
+
+STT_PROVIDER = os.environ.get('STT_PROVIDER', 'whisper').strip().lower()
 TTS_PROVIDER = os.environ.get('TTS_PROVIDER', 'f5').strip().lower()
 
 STREAM_SAMPLE_RATE = int(os.environ.get('STREAM_SAMPLE_RATE', '16000'))
@@ -150,7 +198,7 @@ STREAM_STT_WINDOW_MS = int(os.environ.get('STREAM_STT_WINDOW_MS', '600'))
 STREAM_LLM_MIN_WORDS = int(os.environ.get('STREAM_LLM_MIN_WORDS', '5'))
 STREAM_LLM_NEXT_MIN_WORDS = int(os.environ.get('STREAM_LLM_NEXT_MIN_WORDS', '5'))
 STREAM_LISTEN_IDLE_SECS = float(os.environ.get('STREAM_LISTEN_IDLE_SECS', '8'))
-STREAM_STT_MIN_CHARS = int(os.environ.get('STREAM_STT_MIN_CHARS', '12'))
+STREAM_STT_MIN_CHARS = int(os.environ.get('STREAM_STT_MIN_CHARS', '4'))
 # Max utterance PCM kept for Whisper (seconds); longer answers are trimmed from the start.
 STT_UTTERANCE_MAX_SECS = int(os.environ.get('STT_UTTERANCE_MAX_SECS', '90'))
 STT_TRANSCRIBE_TIMEOUT_SECS = float(os.environ.get('STT_TRANSCRIBE_TIMEOUT_SECS', '120'))

@@ -9,6 +9,7 @@ accelerate>=0.34.0
 huggingface_hub>=0.26.0
 soundfile>=0.12.1
 faster-whisper>=1.2.0
+# Silero VAD loaded via torch.hub (snakers4/silero-vad) — requires torch
 nvidia-cublas-cu12
 nvidia-cudnn-cu12==9.*
 pydub>=0.25.1

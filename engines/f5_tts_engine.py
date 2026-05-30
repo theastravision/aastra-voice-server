@@ -23,11 +23,10 @@ from config import (
     F5_MODEL,
     F5_NFE_STEPS,
     F5_NO_SPLIT_MAX_CHARS,
-    F5_REF_AUDIO,
-    F5_REF_TEXT,
     F5_SPEED,
     F5_SWAY_COEF,
     F5_VOCODER,
+    resolve_f5_ref_paths,
     TTS_OUTPUT_FORMAT,
     is_legacy_f5_ref_text,
 )
@@ -101,13 +100,60 @@ def _resolve_ref_text(ref_text: str) -> str:
     return ref_text
 
 
-def _fallback_ref_paths() -> tuple[str, str]:
-    path = Path(F5_REF_AUDIO)
+def _fallback_ref_paths(
+    *,
+    voice_id: str | None = None,
+    reply_script: str | None = None,
+) -> tuple[str, str]:
+    ref_audio, ref_text = resolve_f5_ref_paths(
+        voice_id=voice_id,
+        reply_script=reply_script,
+    )
+    path = Path(ref_audio)
+    if not path.is_file():
+        path = Path(ref_audio)
+        if not path.is_absolute():
+            from config import _ROOT
+
+            path = _ROOT / path
     if path.is_file():
-        return str(path.resolve()), _resolve_ref_text(F5_REF_TEXT)
+        return str(path.resolve()), _resolve_ref_text(ref_text)
     raise FileNotFoundError(
-        f'F5 reference audio not found: {F5_REF_AUDIO}. '
+        f'F5 reference audio not found: {ref_audio}. '
         'Run: pip install edge-tts && python scripts/setup_ref_audio.py --force'
+    )
+
+
+def _profile_with_env_refs(
+    profile: VoiceProfile | None,
+    voice_id: str,
+    *,
+    reply_script: str | None = None,
+) -> VoiceProfile:
+    """Overlay language-specific env ref paths onto registry voice profile."""
+    ref_audio, ref_text = resolve_f5_ref_paths(
+        voice_id=voice_id,
+        reply_script=reply_script,
+        language=profile.language if profile else None,
+    )
+    if profile is None:
+        return VoiceProfile(
+            id=voice_id,
+            display_name=voice_id,
+            language='hinglish' if reply_script in ('hi', 'hinglish') else 'en-in',
+            ref_audio=ref_audio,
+            ref_text=_resolve_ref_text(ref_text),
+            source='env',
+        )
+    return VoiceProfile(
+        id=profile.id,
+        display_name=profile.display_name,
+        language=profile.language,
+        ref_audio=ref_audio,
+        ref_text=_resolve_ref_text(ref_text),
+        source=profile.source,
+        speed=profile.speed,
+        created_at=profile.created_at,
     )
 
 
@@ -184,6 +230,7 @@ class F5TTSInferenceManager:
 
         self._voice_cache: dict[str, _VoiceConditioning] = {}
         self._active_voice_id = get_default_voice_id()
+        self._active_reply_script: str | None = None
         self._first_package = True
         self._inference_lock = threading.Lock()
         self._cache_lock = threading.Lock()
@@ -216,36 +263,57 @@ class F5TTSInferenceManager:
             speed=speed,
         )
 
-    def _get_conditioning(self, voice_id: str) -> _VoiceConditioning:
+    def _get_conditioning(
+        self,
+        voice_id: str,
+        *,
+        reply_script: str | None = None,
+    ) -> _VoiceConditioning:
+        cache_key = f'{voice_id}:{reply_script or ""}'
         with self._cache_lock:
-            if voice_id in self._voice_cache:
-                return self._voice_cache[voice_id]
-        profile = get_voice(voice_id)
-        if profile is None:
-            ref_path, ref_text = _fallback_ref_paths()
+            if cache_key in self._voice_cache:
+                return self._voice_cache[cache_key]
+        registry_profile = get_voice(voice_id)
+        profile = _profile_with_env_refs(
+            registry_profile, voice_id, reply_script=reply_script
+        )
+        try:
+            cond = self._load_conditioning(profile)
+        except FileNotFoundError:
+            ref_path, ref_text = _fallback_ref_paths(
+                voice_id=voice_id, reply_script=reply_script
+            )
             profile = VoiceProfile(
                 id=voice_id,
                 display_name=voice_id,
-                language='en',
+                language=profile.language,
                 ref_audio=ref_path,
                 ref_text=ref_text,
                 source='fallback',
             )
-        cond = self._load_conditioning(profile)
+            cond = self._load_conditioning(profile)
         with self._cache_lock:
-            self._voice_cache[voice_id] = cond
+            self._voice_cache[cache_key] = cond
         logger.info('F5 voice cache loaded voice_id=%s ref=%s', voice_id, cond.ref_audio_path)
         return cond
 
-    def set_active_voice(self, voice_id: str | None) -> None:
+    def set_active_voice(
+        self,
+        voice_id: str | None,
+        *,
+        reply_script: str | None = None,
+    ) -> None:
         vid = voice_id or get_default_voice_id()
         self._active_voice_id = vid
-        self._get_conditioning(vid)
+        self._active_reply_script = reply_script
+        self._get_conditioning(vid, reply_script=reply_script)
         self._first_package = True
 
     def invalidate_voice(self, voice_id: str) -> None:
         with self._cache_lock:
-            self._voice_cache.pop(voice_id, None)
+            stale = [k for k in self._voice_cache if k.split(':', 1)[0] == voice_id]
+            for key in stale:
+                del self._voice_cache[key]
 
     def reset_stream_state(self) -> None:
         self._first_package = True
@@ -261,7 +329,10 @@ class F5TTSInferenceManager:
         if not cleaned:
             return
 
-        cond = self._get_conditioning(self._active_voice_id)
+        cond = self._get_conditioning(
+            self._active_voice_id,
+            reply_script=reply_script or self._active_reply_script,
+        )
         use_devanagari = (
             F5_HINGLISH_SCRIPT == 'devanagari' and script in ('hi', 'hinglish')
         ) or any('\u0900' <= ch <= '\u097f' for ch in cleaned)

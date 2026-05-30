@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import tempfile
-from pathlib import Path
 
 from config import (
     STREAM_SAMPLE_RATE,
@@ -17,8 +15,8 @@ from config import (
 )
 from engines.lang_detect import resolve_whisper_language
 from engines.stt_filters import is_phantom_stt_text, pick_best_stt_text
-from engines.whisper_stt import _build_transcribe_kwargs, get_model
 from providers.base import SttEvent, StreamingSTT
+from stt_worker import FasterWhisperInferenceManager
 
 logger = logging.getLogger(__name__)
 
@@ -36,11 +34,13 @@ class WhisperChunkSTT(StreamingSTT):
         self._language_hint: str | None = None
         self._last_partial = ''
         self._transcribe_lock = asyncio.Lock()
+        self._manager: FasterWhisperInferenceManager | None = None
 
     async def start(self, *, language_hint: str | None = None) -> None:
         self._buffer.clear()
         self._language_hint = resolve_whisper_language(language_hint)
         self._last_partial = ''
+        self._manager = FasterWhisperInferenceManager.for_language(language_hint)
 
     async def push_pcm(self, chunk: bytes, **kwargs) -> list[SttEvent]:
         del kwargs
@@ -132,42 +132,8 @@ class WhisperChunkSTT(StreamingSTT):
             return [SttEvent(text=text, is_final=final, language=lang)]
 
     def _run_whisper_sync(self, pcm: bytes) -> dict:
-        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
-            tmp.write(self._pcm_to_wav(pcm))
-            wav_path = tmp.name
-        try:
-            model = get_model()
-            lang = self._language_hint
-            kwargs = _build_transcribe_kwargs(lang)
-            if len(pcm) < _BYTES_PER_MS * 2000:
-                kwargs = {**kwargs, 'vad_filter': False}
-            segments, info = model.transcribe(wav_path, **kwargs)
-            text = ''.join(seg.text for seg in segments).strip()
-            detected = getattr(info, 'language', None) or lang or 'en'
-            return {'text': text, 'detected_language': detected}
-        finally:
-            Path(wav_path).unlink(missing_ok=True)
-
-    @staticmethod
-    def _pcm_to_wav(pcm: bytes) -> bytes:
-        import struct as st
-
-        sr = STREAM_SAMPLE_RATE
-        n = len(pcm)
-        header = st.pack(
-            '<4sI4s4sIHHIIHH4sI',
-            b'RIFF',
-            36 + n,
-            b'WAVE',
-            b'fmt ',
-            16,
-            1,
-            1,
-            sr,
-            sr * 2,
-            2,
-            16,
-            b'data',
-            n,
+        if self._manager is None:
+            self._manager = FasterWhisperInferenceManager.for_language(self._language_hint)
+        return self._manager.transcribe_pcm(
+            pcm, language_hint=self._language_hint, final=False
         )
-        return header + pcm

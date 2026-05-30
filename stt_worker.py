@@ -21,6 +21,7 @@ from config import (
     WHISPER_MODEL_PATH,
     WHISPER_VAD_FILTER,
 )
+from engines.audio_normalize import normalize_pcm_s16le
 from engines.lang_detect import resolve_whisper_language
 from engines.stt_filters import is_phantom_stt_text, pick_best_stt_text
 from engines.stt_model_registry import resolve_whisper_path_for_language
@@ -81,16 +82,8 @@ class FasterWhisperInferenceManager:
         if not pcm:
             return {'text': '', 'detected_language': None}
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
-            wav_bytes = _pcm_to_wav(pcm)
-            try:
-                from pydub import AudioSegment
-                import io
-                audio = AudioSegment.from_file(io.BytesIO(wav_bytes), format="wav")
-                if audio.max_dBFS < 0:
-                    audio = audio.apply_gain(-audio.max_dBFS)
-                audio.export(tmp.name, format="wav")
-            except ImportError:
-                tmp.write(wav_bytes)
+            wav_bytes = _pcm_to_wav(normalize_pcm_s16le(pcm))
+            tmp.write(wav_bytes)
             wav_path = tmp.name
         try:
             lang = resolve_whisper_language(language_hint)

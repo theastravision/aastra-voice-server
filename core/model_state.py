@@ -35,11 +35,27 @@ def run_warmup_background() -> None:
         try:
             from config import STT_PROVIDER
 
-            if STT_PROVIDER in ('whisper', 'whisper_chunk', 'whisper-live', 'auto'):
+            if STT_PROVIDER in ('whisper', 'whisper_chunk', 'whisper-live', 'silero_whisper', 'auto'):
                 from stt_worker import FasterWhisperInferenceManager
 
                 logger.info('Background warmup: Whisper STT...')
                 FasterWhisperInferenceManager.for_language(None)
+
+            from engines.silero_vad import warmup_silero_vad
+
+            logger.info('Background warmup: Silero VAD...')
+            warmup_silero_vad()
+
+            from config import TTS_HINGLISH_ENGINE
+
+            if TTS_HINGLISH_ENGINE == 'melotts':
+                try:
+                    from engines.melo_tts_engine import warmup as melo_warmup
+
+                    logger.info('Background warmup: MeloTTS...')
+                    melo_warmup()
+                except Exception:
+                    logger.warning('MeloTTS warmup skipped', exc_info=True)
 
             from engines.f5_tts_engine import f5_available, warmup as f5_warmup
             from engines.interjections import warmup_interjections

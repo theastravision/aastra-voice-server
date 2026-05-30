@@ -11,21 +11,17 @@ from collections.abc import Awaitable, Callable
 
 from config import (
     BOT_MODE,
-    INTERJECTION_TIMEOUT_MS,
     OPENAI_MODEL,
-    OPENAI_VOICE_TEMPERATURE,
     STREAM_LISTEN_IDLE_SECS,
     STREAM_STT_MIN_CHARS,
 )
-from engines.interjections import pick_interjection
 from engines.lang_detect import (
     empty_utterance_message,
     pick_reply_script_for_session,
     pick_tts_route_for_session,
     resolve_session_language,
 )
-from engines.llm_script_contract import should_strict_script_gate
-from engines.llm_turn import build_extra_system, finalize_assistant_for_tts
+from engines.llm_turn import build_extra_system
 from engines.interview_guard import (
     is_off_topic_interview_question,
     off_topic_refusal_message,
@@ -49,11 +45,13 @@ from engines.stt_filters import (
 )
 from engines.voice_registry import get_default_voice_id, get_voice, resolve_voice_for_language
 from engines.tts_utils import ensure_pcm_s16le_bytes, is_speakable_text
-from llm_worker import LlmWorker, PhraseBuffer, stream_chat_tokens
+from llm_worker import LlmWorker
 from providers.registry import create_stt
 from streaming.audio_buffer import DuplexAudioState
 from streaming.event_bus import VoiceEventBus, _NoOpBus, get_event_bus
 from streaming.prompts import build_messages
+from streaming.session_state import SessionPhase, SessionStateMachine
+from streaming.voice_pipeline import VoicePipeline
 from tts_worker import TtsWorker
 
 logger = logging.getLogger(__name__)
@@ -89,16 +87,24 @@ class InterviewSession:
         self._interview_phase = initial_interview_phase()
         self._name_retry_used = False
         self._intro_captured = False
-        self._stt = create_stt()
+        self._state = SessionStateMachine()
+        self._stt = create_stt(on_utterance_end=self.on_end_utterance)
         self._llm = LlmWorker()
         self._tts = TtsWorker()
+        self._pipeline = VoicePipeline(
+            state=self._state,
+            tts=self._tts,
+            duplex_cancel=self._duplex.cancel_generation,
+            send_json=send_json,
+            stream_tts_phrase=self._stream_tts_phrase,
+            stream_interjection=self._stream_cached_interjection,
+            evt=_evt,
+        )
         self._history: list[dict[str, str]] = []
         self._pending_final: str | None = None
         self._last_detected_lang: str | None = None
         self._last_stt_text = ''
         self._best_stt_text = ''
-        self._processing = False
-        self._is_greeting_done = False
         self._empty_prompt_playing = False
         self._last_empty_prompt_at = 0.0
         self._last_idle_nudge_at = 0.0
@@ -111,6 +117,19 @@ class InterviewSession:
         self._turn_audio_config_sent = False
         self._bus = event_bus if event_bus is not None else get_event_bus()
         self._closed = False
+        self._config_key = (
+            language_hint,
+            voice_id if voice_id else resolve_voice_for_language(language_hint),
+            (candidate_name or '').strip() or None,
+        )
+
+    @property
+    def config_key(self) -> tuple:
+        return self._config_key
+
+    @property
+    def is_greeted(self) -> bool:
+        return self._state.is_greeted
 
     @property
     def voice_id(self) -> str:
@@ -120,6 +139,7 @@ class InterviewSession:
         await self._stt.start(language_hint=self._language_hint)
         tts_hint = self._session_lang or self._language_hint
         await self._tts.start(language_hint=tts_hint, voice_id=self._voice_id)
+        await self._state.begin_listening()
         await self._bus.session_event(
             self.session_id,
             'session_start',
@@ -140,12 +160,9 @@ class InterviewSession:
         await self._tts.close()
         await self._bus.session_event(self.session_id, 'session_end')
 
-    async def play_greeting(self) -> None:
-        if self._is_greeting_done:
-            return
-        if self._processing:
-            return
-        self._is_greeting_done = True
+    async def play_greeting(self) -> bool:
+        if not await self._state.try_greet():
+            return False
         self._cancel_listen_idle()
 
         if interview_opening_enabled() and BOT_MODE == 'interview':
@@ -160,7 +177,6 @@ class InterviewSession:
                 text = text if text else f'Hello {name}, welcome.'
             self._interview_phase = InterviewPhase.ACTIVE
 
-        self._processing = True
         await self._duplex.begin_turn()
         await self._duplex.set_agent_speaking(True)
         self._turn_audio_config_sent = False
@@ -179,8 +195,9 @@ class InterviewSession:
             await self._duplex.set_agent_speaking(False)
             await self._duplex.end_turn()
             await self._send_json(_evt('turn_end'))
-            self._processing = False
             self._turn_audio_config_sent = False
+            await self._state.begin_listening()
+        return True
 
     async def on_listen_ready(self) -> None:
         """Client finished playing TTS — safe to start listen-idle timer."""
@@ -203,7 +220,7 @@ class InterviewSession:
             self._best_stt_text = best
 
     async def on_pcm_chunk(self, chunk: bytes, *, rms_energy: float = 0.0) -> None:
-        if self._closed or self._processing:
+        if self._closed:
             return
         if rms_energy > 0.02:
             self._cancel_listen_idle()
@@ -214,8 +231,10 @@ class InterviewSession:
                 '{"type":"barge_in","message":"User interrupted agent"}'
             )
 
+        accept_stt = await self._state.accept_pcm_for_stt()
         async with self._duplex.lock:
-            accept_stt = not self._duplex.agent_speaking
+            if self._duplex.agent_speaking:
+                accept_stt = False
         events = await self._stt.push_pcm(chunk, rms_energy=rms_energy) if accept_stt else []
         for ev in events:
             self._note_stt_text(ev.text or '', is_final=ev.is_final)
@@ -238,7 +257,9 @@ class InterviewSession:
                 )
 
     async def on_end_utterance(self) -> None:
-        if self._closed or self._processing:
+        if self._closed:
+            return
+        if await self._state.is_locked():
             return
         self._cancel_listen_idle()
         if self._end_utterance_task and not self._end_utterance_task.done():
@@ -250,7 +271,7 @@ class InterviewSession:
         """Stop in-flight LLM/TTS so a new user utterance can be handled."""
         async with self._duplex.lock:
             agent_busy = self._duplex.agent_speaking or self._duplex.turn_in_progress
-        if not agent_busy and not self._processing:
+        if not agent_busy and not await self._state.is_locked():
             return
         await self._duplex.request_barge_in()
         self._empty_prompt_playing = False
@@ -261,13 +282,16 @@ class InterviewSession:
 
     async def _process_end_utterance(self) -> None:
         try:
-            await self._send_json(_evt('stt_processing'))
             async with self._duplex.lock:
                 agent_speaking = self._duplex.agent_speaking
+                turn_busy = self._duplex.turn_in_progress
 
-            if agent_speaking or self._processing:
+            if agent_speaking or turn_busy:
                 await self._cancel_active_turn()
                 await asyncio.sleep(0.05)
+
+            await self._state.transition(SessionPhase.STT_PROCESSING)
+            await self._send_json(_evt('stt_processing'))
 
             events = await self._stt.flush()
             text = ''
@@ -312,6 +336,7 @@ class InterviewSession:
                 return
 
             await self._prompt_empty_utterance()
+            await self._state.begin_listening()
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -322,6 +347,7 @@ class InterviewSession:
                     message='Could not process your speech. Please try again.',
                 )
             )
+            await self._state.begin_listening()
             self._schedule_listen_idle()
         finally:
             if self._end_utterance_pending:
@@ -366,7 +392,7 @@ class InterviewSession:
         reply_script: str,
     ) -> None:
         """Speak a fixed reply (off-topic refusal) without calling the LLM."""
-        self._processing = True
+        await self._state.transition(SessionPhase.TTS_PLAYING)
         self._barge_in_offset_ms = 0.0
         self._turn_audio_config_sent = False
         await self._duplex.begin_turn()
@@ -392,19 +418,16 @@ class InterviewSession:
             await self._duplex.end_turn()
             await self._send_json(_evt('turn_end'))
             await self._bus.turn_event(self.session_id, 'turn_end')
-            self._processing = False
             self._turn_audio_config_sent = False
+            await self._state.begin_listening()
 
     async def _run_turn(self, user_text: str, *, intro_follow_up: bool = False) -> None:
-        self._processing = True
         self._barge_in_offset_ms = 0.0
         self._turn_audio_config_sent = False
         await self._duplex.begin_turn()
         await self._duplex.set_agent_speaking(True)
         await self._send_json(_evt('turn_start'))
         await self._bus.turn_event(self.session_id, 'turn_start')
-        full_reply: list[str] = []
-        interjection_played = False
         reply_script = pick_reply_script_for_session(
             self._session_lang, self._last_detected_lang, user_text
         )
@@ -430,91 +453,14 @@ class InterviewSession:
             self._history.append({'role': 'user', 'content': user_text})
 
             tts_route = pick_tts_route_for_session(self._session_lang, reply_script)
-            await self._tts.start(language_hint=tts_route, voice_id=self._voice_id)
-
-            phrase_q: asyncio.Queue[str | None] = asyncio.Queue(maxsize=8)
-            first_token_event = asyncio.Event()
-            cancel = self._duplex.cancel_generation
-            strict_gate = should_strict_script_gate() and self._session_lang in (
-                'hi',
-                'hinglish',
-            )
-            finalized_text: list[str] = []
-
-            async def _llm_producer() -> None:
-                splitter = PhraseBuffer()
-                try:
-                    async for token in stream_chat_tokens(
-                        messages, temperature=OPENAI_VOICE_TEMPERATURE
-                    ):
-                        if cancel.is_set():
-                            break
-                        if not first_token_event.is_set():
-                            first_token_event.set()
-                        full_reply.append(token)
-                        await self._send_json(_evt('assistant_delta', text=token))
-                        if not strict_gate:
-                            for phrase in splitter.push(token):
-                                if cancel.is_set():
-                                    break
-                                await phrase_q.put(phrase)
-                    if strict_gate and not cancel.is_set():
-                        raw = ''.join(full_reply).strip()
-                        text, phrases = await finalize_assistant_for_tts(
-                            messages,
-                            raw,
-                            self._session_lang,
-                            reply_script,
-                        )
-                        finalized_text.append(text)
-                        for phrase in phrases:
-                            await phrase_q.put(phrase)
-                    elif not strict_gate:
-                        remainder = splitter.flush()
-                        if remainder and not cancel.is_set():
-                            await phrase_q.put(remainder)
-                finally:
-                    await phrase_q.put(None)
-
-            async def _interjection_watcher() -> None:
-                nonlocal interjection_played
-                try:
-                    await asyncio.wait_for(
-                        first_token_event.wait(),
-                        timeout=INTERJECTION_TIMEOUT_MS / 1000.0,
-                    )
-                except asyncio.TimeoutError:
-                    if cancel.is_set() or interjection_played:
-                        return
-                    clip = pick_interjection(reply_script)
-                    if clip is None:
-                        return
-                    interjection_played = True
-                    await self._stream_cached_interjection(clip)
-
-            async def _tts_consumer() -> None:
-                while True:
-                    phrase = await phrase_q.get()
-                    if phrase is None:
-                        break
-                    if cancel.is_set():
-                        while not phrase_q.empty():
-                            phrase_q.get_nowait()
-                        break
-                    await self._stream_tts_phrase(phrase, tts_route)
-
-            await asyncio.gather(
-                _interjection_watcher(),
-                _llm_producer(),
-                _tts_consumer(),
+            assistant_text = await self._pipeline.run_llm_tts_turn(
+                messages=messages,
+                tts_route=tts_route,
+                voice_id=self._voice_id,
+                reply_script=reply_script,
             )
 
-            assistant_text = (
-                finalized_text[0]
-                if finalized_text
-                else ''.join(full_reply).strip()
-            )
-            if cancel.is_set() and self._barge_in_offset_ms > 0:
+            if self._duplex.cancel_generation.is_set() and self._barge_in_offset_ms > 0:
                 chars_spoken = int((self._barge_in_offset_ms / 1000.0) * 15)
                 if chars_spoken < len(assistant_text):
                     truncated = assistant_text[:chars_spoken]
@@ -538,8 +484,8 @@ class InterviewSession:
             await self._duplex.end_turn()
             await self._send_json(_evt('turn_end'))
             await self._bus.turn_event(self.session_id, 'turn_end')
-            self._processing = False
             self._turn_audio_config_sent = False
+            await self._state.begin_listening()
 
     async def _repeat_last_question(self) -> None:
         last_assistant = ''
@@ -551,8 +497,8 @@ class InterviewSession:
             await self._prompt_empty_utterance()
             return
 
-        self._processing = True
         self._turn_audio_config_sent = False
+        await self._state.transition(SessionPhase.TTS_PLAYING)
         await self._duplex.begin_turn()
         await self._duplex.set_agent_speaking(True)
         await self._send_json(_evt('turn_start'))
@@ -572,8 +518,7 @@ class InterviewSession:
             await self._duplex.set_agent_speaking(False)
             await self._duplex.end_turn()
             await self._send_json(_evt('turn_end'))
-            self._processing = False
-            self._turn_audio_config_sent = False
+            await self._state.begin_listening()
 
     async def _prompt_empty_utterance(self) -> None:
         now = time.monotonic()
@@ -613,7 +558,7 @@ class InterviewSession:
     async def _listen_idle_wait(self) -> None:
         try:
             await asyncio.sleep(STREAM_LISTEN_IDLE_SECS)
-            if self._processing or self._closed:
+            if self._closed or await self._state.is_locked():
                 return
             async with self._duplex.lock:
                 if self._duplex.agent_speaking or self._duplex.turn_in_progress:
@@ -628,7 +573,7 @@ class InterviewSession:
 
     async def _speak_listen_idle_nudge(self) -> None:
         hint, script = listen_idle_message(self._session_lang)
-        self._processing = True
+        await self._state.transition(SessionPhase.TTS_PLAYING)
         self._turn_audio_config_sent = False
         await self._duplex.begin_turn()
         await self._duplex.set_agent_speaking(True)
@@ -644,8 +589,7 @@ class InterviewSession:
             await self._duplex.set_agent_speaking(False)
             await self._duplex.end_turn()
             await self._send_json(_evt('turn_end'))
-            self._processing = False
-            self._turn_audio_config_sent = False
+            await self._state.begin_listening()
 
     async def _stream_cached_interjection(self, clip) -> None:
         try:

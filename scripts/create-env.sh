@@ -37,11 +37,12 @@ OPENAI_MAX_COMPLETION_TOKENS=128
 CHAT_HISTORY_MAX_TURNS=8
 
 BOT_MODE=interview
-STT_PROVIDER=whisper_chunk
+STT_PROVIDER=whisper
 TTS_PROVIDER=f5
 F5_MODEL=F5TTS_v1_Base
-F5_NFE_STEPS=18
-F5_REF_AUDIO=assets/voices/astra_ref.wav
+F5_NFE_STEPS=12
+F5_REF_AUDIO_EN=assets/voices/astra_ref.wav
+F5_REF_AUDIO_HINGLISH=assets/voices/astra_ref_hinglish.wav
 
 WHISPER_MODEL=base
 WHISPER_LANGUAGE=auto
@@ -58,4 +59,5 @@ PORT=8000
 EOF
 
 chmod 600 "$ENV_FILE" 2>/dev/null || true
+bash "$ROOT/scripts/sync-env.sh" "$ENV_FILE"
 echo "Created $ENV_FILE"

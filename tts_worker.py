@@ -43,7 +43,7 @@ class TtsWorker:
             from engines.f5_tts_engine import get_manager
 
             mgr = get_manager()
-            mgr.set_active_voice(voice_id)
+            mgr.set_active_voice(voice_id, reply_script=self._reply_script)
             mgr.reset_stream_state()
         elif self._backend == 'melotts':
             from engines.melo_tts_engine import get_manager as get_melo
@@ -91,7 +91,7 @@ class TtsWorker:
                     from engines.f5_tts_engine import get_manager
 
                     mgr = get_manager()
-                    mgr.set_active_voice(voice_id)
+                    mgr.set_active_voice(voice_id, reply_script=reply_script)
                     stream = mgr.synthesize_stream_sync(cleaned, reply_script=reply_script)
 
                 for pcm, sr in stream:

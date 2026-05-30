@@ -9,7 +9,7 @@ import struct
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from auth import require_ws_api_key
-from config import STREAM_ALLOW_PUBLIC, STREAM_SAMPLE_RATE
+from config import STT_PROVIDER, STREAM_ALLOW_PUBLIC, STREAM_SAMPLE_RATE, STREAM_SILENCE_END_MS
 from server import InterviewSession
 from streaming.audio_buffer import DuplexAudioState
 from streaming.event_bus import get_event_bus
@@ -28,6 +28,14 @@ def _rms_pcm_s16le(chunk: bytes) -> float:
         return 0.0
     mean_sq = sum(s * s for s in samples) / len(samples)
     return (mean_sq ** 0.5) / 32768.0
+
+
+def _config_key(payload: dict) -> tuple:
+    return (
+        payload.get('language'),
+        payload.get('voice_id'),
+        (payload.get('candidate_name') or '').strip() or None,
+    )
 
 
 @router.websocket('/ws/voice')
@@ -83,36 +91,51 @@ async def ws_voice(websocket: WebSocket):
             if msg_type == WsType.CONFIG.value:
                 lang = payload.get('language')
                 candidate = payload.get('candidate_name')
+                voice_id = payload.get('voice_id')
                 greet_raw = payload.get('greet', False)
                 greet = greet_raw is True or (
                     isinstance(greet_raw, str) and greet_raw.lower() in ('1', 'true', 'yes')
                 )
-                if session:
-                    await session.close()
-                session = InterviewSession(
-                    send_json=send_json,
-                    send_binary=send_binary,
-                    duplex=duplex,
-                    language_hint=lang,
-                    voice_id=payload.get('voice_id'),
-                    candidate_name=candidate,
-                    event_bus=get_event_bus(),
-                )
-                await session.start()
+                new_key = _config_key(payload)
+                reused = False
                 greeted = False
-                if greet:
-                    await session.play_greeting()
-                    greeted = True
+
+                if session is not None and session.config_key == new_key:
+                    reused = True
+                    if greet and not session.is_greeted:
+                        greeted = await session.play_greeting()
+                    elif greet and session.is_greeted:
+                        greeted = False
+                else:
+                    if session:
+                        await session.close()
+                    session = InterviewSession(
+                        send_json=send_json,
+                        send_binary=send_binary,
+                        duplex=duplex,
+                        language_hint=lang,
+                        voice_id=voice_id,
+                        candidate_name=candidate,
+                        event_bus=get_event_bus(),
+                    )
+                    await session.start()
+                    if greet:
+                        greeted = await session.play_greeting()
+                    else:
+                        greeted = False
+
                 await send_json(
                     json_event(
                         WsType.CONFIG,
                         ok=True,
                         session_id=session.session_id,
                         greeted=greeted,
-                        stt='whisper_chunk',
+                        reused=reused,
+                        stt=STT_PROVIDER,
                         tts='f5',
                         voice_id=session.voice_id,
                         sample_rate=STREAM_SAMPLE_RATE,
+                        silence_end_ms=STREAM_SILENCE_END_MS,
                         ws_path='/ws/voice',
                     )
                 )
