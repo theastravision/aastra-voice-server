@@ -1,0 +1,123 @@
+{
+  "description": "Open-source speech datasets for EN / HI / Hinglish fine-tuning. Sizes are approximate published totals — not shipped with this repo.",
+  "target_languages": ["en", "hi", "hinglish"],
+  "stt_datasets": [
+    {
+      "id": "mozilla-common-voice-hi",
+      "name": "Mozilla Common Voice — Hindi",
+      "hours_approx": 100,
+      "samples_approx": 500000,
+      "license": "CC0 / CC-BY",
+      "url": "https://huggingface.co/datasets/mozilla-foundation/common_voice_17_0",
+      "use": "Whisper fine-tune / validation",
+      "whisper_lang": "hi"
+    },
+    {
+      "id": "mozilla-common-voice-en",
+      "name": "Mozilla Common Voice — English",
+      "hours_approx": 2500,
+      "samples_approx": 2000000,
+      "license": "CC0 / CC-BY",
+      "url": "https://huggingface.co/datasets/mozilla-foundation/common_voice_17_0",
+      "use": "English STT baseline",
+      "whisper_lang": "en"
+    },
+    {
+      "id": "ai4bharat-indicvoices",
+      "name": "AI4Bharat IndicVoices",
+      "hours_approx": 15000,
+      "samples_approx": 10000000,
+      "license": "Check dataset card",
+      "url": "https://huggingface.co/datasets/ai4bharat/IndicVoices",
+      "use": "Multi-Indic STT; includes Hindi and code-mixed",
+      "whisper_lang": "hi"
+    },
+    {
+      "id": "ai4bharat-indicvoices-r",
+      "name": "IndicVoices-R (re-transcribed)",
+      "hours_approx": 8000,
+      "samples_approx": 5000000,
+      "license": "Check dataset card",
+      "url": "https://huggingface.co/datasets/ai4bharat/IndicVoices-R",
+      "use": "Cleaner labels for Whisper fine-tune",
+      "whisper_lang": "hi"
+    },
+    {
+      "id": "shrutilipi-hindi",
+      "name": "ShrutiLipi / Indic speech corpora (various)",
+      "hours_approx": 5000,
+      "samples_approx": 3000000,
+      "license": "Varies",
+      "url": "https://huggingface.co/ai4bharat",
+      "use": "Hindi ASR research corpora",
+      "whisper_lang": "hi"
+    },
+    {
+      "id": "mucs-hinglish",
+      "name": "MUCS / Hinglish ASR challenges",
+      "hours_approx": 50,
+      "samples_approx": 200000,
+      "license": "Challenge terms",
+      "url": "https://navana-tech.github.io/MUCS2021/",
+      "use": "Hinglish code-switch evaluation",
+      "whisper_lang": "hi"
+    },
+    {
+      "id": "whisper-pretrain",
+      "name": "Whisper pre-training (OpenAI)",
+      "hours_approx": 680000,
+      "samples_approx": null,
+      "license": "MIT (model)",
+      "url": "https://github.com/openai/whisper",
+      "use": "Base model already trained at web scale — you fine-tune on Indic data above",
+      "whisper_lang": "multilingual"
+    }
+  ],
+  "tts_datasets": [
+    {
+      "id": "indictts-hindi",
+      "name": "AI4Bharat IndicTTS — Hindi",
+      "hours_approx": 100,
+      "samples_approx": 10000000,
+      "license": "Check dataset card",
+      "url": "https://huggingface.co/datasets/ai4bharat/IndicTTS",
+      "use": "Train/fine-tune MeloTTS, VITS, or Kokoro-style models",
+      "kokoro_lang": "hi"
+    },
+    {
+      "id": "ljspeech",
+      "name": "LJSpeech",
+      "hours_approx": 24,
+      "samples_approx": 13100,
+      "license": "Public domain",
+      "url": "https://keithito.com/LJ-Speech-Dataset/",
+      "use": "English TTS baseline",
+      "kokoro_lang": "en"
+    },
+    {
+      "id": "riva-hindi-tts",
+      "name": "OpenSLR Hindi TTS corpora",
+      "hours_approx": 50,
+      "samples_approx": 500000,
+      "license": "Varies (CC-BY common)",
+      "url": "https://www.openslr.org/",
+      "use": "Hindi TTS training",
+      "kokoro_lang": "hi"
+    },
+    {
+      "id": "kokoro-pretrain",
+      "name": "Kokoro-82M pre-training",
+      "hours_approx": null,
+      "samples_approx": null,
+      "license": "Apache-2.0",
+      "url": "https://github.com/hexgrad/kokoro",
+      "use": "Default runtime TTS — fine-tune on IndicTTS for better Hindi",
+      "kokoro_lang": "en+hi"
+    }
+  ],
+  "combined_scale_notes": {
+    "claim_100_million": "IndicVoices + IndicTTS + Common Voice combined can exceed 10M–100M utterances when merging corpora. You download and prepare them locally — they are not bundled in voice-server.",
+    "recommended_finetune_stt_hours": "500–5000 hours Hindi + 50+ hours Hinglish code-mixed for noticeable gain over large-v3 zero-shot",
+    "recommended_finetune_tts_hours": "20–100+ hours per language/voice for custom TTS; Kokoro fine-tune is advanced — consider MeloTTS or Coqui VITS for Indic training"
+  }
+}

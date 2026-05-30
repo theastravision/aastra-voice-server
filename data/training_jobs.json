@@ -1,0 +1,20 @@
+{
+  "jobs": [
+    {
+      "id": "5c3b262f-e9e3-4d72-9b4b-e173c91de186",
+      "language": "hinglish",
+      "status": "queued",
+      "job_type": "whisper_finetune",
+      "sample_count": 0,
+      "hours": 0.0,
+      "rows_synthesized": 0,
+      "error": null,
+      "whisper_path": null,
+      "manifest_path": null,
+      "register_voice": false,
+      "voice_name": null,
+      "created_at": "2026-05-30T04:21:53+00:00",
+      "updated_at": "2026-05-30T04:21:53+00:00"
+    }
+  ]
+}

@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Astra — Streaming Voice</title>
+  <style>
+    :root { --bg:#0a0e17; --card:#121a2b; --text:#e8ecf4; --muted:#8b95a8; --accent:#6366f1; }
+    * { box-sizing: border-box; }
+    body { margin:0; min-height:100vh; font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); padding:1rem; }
+    .card { max-width:520px; margin:0 auto; background:var(--card); border-radius:16px; padding:1.25rem; border:1px solid rgba(255,255,255,.06); }
+    h1 { margin:0 0 .25rem; font-size:1.2rem; }
+    .sub { color:var(--muted); font-size:.8rem; margin-bottom:1rem; }
+    .status { font-size:.75rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:.5rem 0; }
+    .status.on { color:#34d399; }
+    #log { max-height:280px; overflow-y:auto; font-size:.85rem; line-height:1.5; }
+    .line { margin:.35rem 0; padding:.4rem .6rem; border-radius:8px; }
+    .user { background:#1e3a5f; }
+    .astra { background:#2d1f4e; }
+    .partial { opacity:.65; font-style:italic; }
+    button { margin:.25rem .25rem 0 0; padding:.55rem 1rem; border:none; border-radius:8px; font-weight:600; cursor:pointer; }
+    .primary { background:var(--accent); color:#fff; }
+    .danger { background:rgba(248,113,113,.2); color:#f87171; }
+    button:disabled { opacity:.4; cursor:not-allowed; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Astra Streaming</h1>
+    <p class="sub">PCM over WebSocket · LLM + TTS streaming · No base64 audio</p>
+    <p id="status" class="status">Disconnected</p>
+    <div>
+      <button id="btnConnect" class="primary" type="button">Connect</button>
+      <button id="btnTalk" type="button" disabled>Start mic</button>
+      <button id="btnEnd" type="button" disabled>End utterance</button>
+      <button id="btnBarge" class="danger" type="button" disabled>Interrupt</button>
+    </div>
+    <div id="log"></div>
+  </div>
+  <script>
+    const WS_URL = (location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host + '/ws/voice';
+    const TARGET_SR = 16000;
+    const CHUNK_MS = 30;
+    const SAMPLES_PER_CHUNK = Math.floor(TARGET_SR * CHUNK_MS / 1000);
+
+    let ws = null;
+    let audioCtx = null;
+    let micStream = null;
+    let processor = null;
+    let playbackCtx = null;
+    let nextPlayTime = 0;
+    let active = false;
+    let silenceMs = 0;
+    const SILENCE_END_MS = 1100;
+
+    const statusEl = document.getElementById('status');
+    const logEl = document.getElementById('log');
+    const btnConnect = document.getElementById('btnConnect');
+    const btnTalk = document.getElementById('btnTalk');
+    const btnEnd = document.getElementById('btnEnd');
+    const btnBarge = document.getElementById('btnBarge');
+
+    function log(cls, text, partial) {
+      const div = document.createElement('div');
+      div.className = 'line ' + cls + (partial ? ' partial' : '');
+      div.textContent = text;
+      if (partial) {
+        const last = logEl.querySelector('.partial.' + cls);
+        if (last) last.remove();
+      }
+      logEl.appendChild(div);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function setStatus(t, on) {
+      statusEl.textContent = t;
+      statusEl.className = 'status' + (on ? ' on' : '');
+    }
+
+    function floatTo16kPcm(input, inputRate) {
+      const ratio = inputRate / TARGET_SR;
+      const outLen = Math.floor(input.length / ratio);
+      const out = new Int16Array(outLen);
+      for (let i = 0; i < outLen; i++) {
+        const idx = Math.floor(i * ratio);
+        const s = Math.max(-1, Math.min(1, input[idx]));
+        out[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+      }
+      return out;
+    }
+
+    function rms(buf) {
+      let s = 0;
+      for (let i = 0; i < buf.length; i++) s += buf[i] * buf[i];
+      return Math.sqrt(s / buf.length);
+    }
+
+    async function playPcm(pcmBytes, sampleRate) {
+      if (!playbackCtx) playbackCtx = new AudioContext({ sampleRate });
+      const n = pcmBytes.byteLength / 2;
+      const view = new DataView(pcmBytes);
+      const floats = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        const v = view.getInt16(i * 2, true);
+        floats[i] = v / 32768;
+      }
+      const buf = playbackCtx.createBuffer(1, n, sampleRate);
+      buf.copyToChannel(floats, 0);
+      const src = playbackCtx.createBufferSource();
+      src.buffer = buf;
+      src.connect(playbackCtx.destination);
+      const t = Math.max(nextPlayTime, playbackCtx.currentTime);
+      src.start(t);
+      nextPlayTime = t + buf.duration;
+    }
+
+    btnConnect.onclick = () => {
+      if (ws) { ws.close(); return; }
+      ws = new WebSocket(WS_URL);
+      ws.binaryType = 'arraybuffer';
+      ws.onopen = () => {
+        setStatus('Connected', true);
+        ws.send(JSON.stringify({
+          type: 'config',
+          stt_provider: 'whisper_chunk',
+          tts_provider: 'f5',
+          language: 'hi-IN',
+        }));
+        btnTalk.disabled = false;
+        btnEnd.disabled = false;
+        btnBarge.disabled = false;
+      };
+      ws.onmessage = async (ev) => {
+        if (ev.data instanceof ArrayBuffer) {
+          await playPcm(ev.data, 24000);
+          return;
+        }
+        let msg;
+        try { msg = JSON.parse(ev.data); } catch { return; }
+        if (msg.type === 'stt_partial') log('user', '… ' + msg.text, true);
+        if (msg.type === 'stt_final') log('user', msg.text, false);
+        if (msg.type === 'assistant_delta') log('astra', msg.text, true);
+        if (msg.type === 'assistant_text') {
+          const partial = logEl.querySelector('.partial.astra');
+          if (partial) partial.remove();
+          log('astra', msg.text, false);
+        }
+        if (msg.type === 'error') log('astra', 'Error: ' + msg.message, false);
+        if (msg.type === 'turn_start') setStatus('Thinking…', true);
+        if (msg.type === 'turn_end') setStatus('Listening', true);
+      };
+      ws.onclose = () => {
+        setStatus('Disconnected', false);
+        btnTalk.disabled = true;
+        stopMic();
+      };
+    };
+
+    function stopMic() {
+      active = false;
+      if (processor) { processor.disconnect(); processor = null; }
+      if (micStream) micStream.getTracks().forEach(t => t.stop());
+      btnTalk.textContent = 'Start mic';
+    }
+
+    btnTalk.onclick = async () => {
+      if (active) { stopMic(); return; }
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 },
+      });
+      audioCtx = new AudioContext();
+      const src = audioCtx.createMediaStreamSource(micStream);
+      processor = audioCtx.createScriptProcessor(4096, 1, 1);
+      let carry = new Int16Array(0);
+      processor.onaudioprocess = (e) => {
+        if (!active || !ws || ws.readyState !== WebSocket.OPEN) return;
+        const input = e.inputBuffer.getChannelData(0);
+        const pcm = floatTo16kPcm(input, audioCtx.sampleRate);
+        const merged = new Int16Array(carry.length + pcm.length);
+        merged.set(carry);
+        merged.set(pcm, carry.length);
+        let offset = 0;
+        while (offset + SAMPLES_PER_CHUNK <= merged.length) {
+          const slice = merged.subarray(offset, offset + SAMPLES_PER_CHUNK);
+          ws.send(slice.buffer.slice(slice.byteOffset, slice.byteOffset + slice.byteLength));
+          const level = rms(slice);
+          if (level > 0.015) silenceMs = 0;
+          else silenceMs += CHUNK_MS;
+          if (silenceMs >= SILENCE_END_MS) {
+            ws.send(JSON.stringify({ type: 'end_utterance' }));
+            silenceMs = 0;
+          }
+          offset += SAMPLES_PER_CHUNK;
+        }
+        carry = merged.subarray(offset);
+      };
+      src.connect(processor);
+      processor.connect(audioCtx.destination);
+      active = true;
+      btnTalk.textContent = 'Stop mic';
+      setStatus('Listening', true);
+    };
+
+    btnEnd.onclick = () => {
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'end_utterance' }));
+    };
+    btnBarge.onclick = () => {
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'barge_in' }));
+      nextPlayTime = 0;
+    };
+  </script>
+</body>
+</html>

@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Astra — Technical Interview</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0a0e17;
+      --card: #121a2b;
+      --accent: #6366f1;
+      --accent-glow: rgba(99, 102, 241, 0.45);
+      --text: #e8ecf4;
+      --muted: #8b95a8;
+      --user: #1e3a5f;
+      --astra: #2d1f4e;
+      --success: #34d399;
+      --danger: #f87171;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: 'DM Sans', system-ui, sans-serif;
+      background: radial-gradient(ellipse 80% 60% at 50% -10%, #1e2a4a 0%, var(--bg) 55%);
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .shell {
+      width: 100%;
+      max-width: 440px;
+      background: var(--card);
+      border-radius: 24px;
+      border: 1px solid rgba(255,255,255,0.06);
+      box-shadow: 0 24px 80px rgba(0,0,0,0.45);
+      overflow: hidden;
+    }
+    .header {
+      padding: 1.5rem 1.5rem 1rem;
+      text-align: center;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .header p { margin: 0.35rem 0 0; font-size: 0.85rem; color: var(--muted); }
+    .orb-wrap {
+      display: flex;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+    .orb {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      background: linear-gradient(145deg, var(--accent), #a855f7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      transition: transform 0.3s, box-shadow 0.3s;
+    }
+    .orb::after {
+      content: '';
+      position: absolute;
+      inset: -8px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    .orb.idle { box-shadow: 0 0 40px var(--accent-glow); }
+    .orb.listening {
+      transform: scale(1.06);
+      box-shadow: 0 0 56px var(--accent-glow);
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    .orb.listening::after { border-color: var(--success); box-shadow: 0 0 20px rgba(52,211,153,0.5); }
+    .orb.speaking { box-shadow: 0 0 48px rgba(168,85,247,0.5); animation: none; }
+    .orb.thinking { animation: spin-glow 1.5s linear infinite; }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1.04); }
+      50% { transform: scale(1.1); }
+    }
+    @keyframes spin-glow {
+      0% { filter: hue-rotate(0deg); }
+      100% { filter: hue-rotate(30deg); }
+    }
+    .orb svg { width: 48px; height: 48px; opacity: 0.9; }
+    .status-pill {
+      text-align: center;
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      min-height: 1.2rem;
+      margin-bottom: 0.5rem;
+    }
+    .status-pill.active { color: var(--success); }
+    .status-pill.busy { color: #c4b5fd; }
+    .lang-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0 1.25rem 0.75rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .lang-row select {
+      font-family: inherit;
+      font-size: 0.85rem;
+      padding: 0.4rem 0.6rem;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(0,0,0,0.25);
+      color: var(--text);
+    }
+    .controls {
+      display: flex;
+      gap: 0.75rem;
+      padding: 0 1.25rem 1.25rem;
+      justify-content: center;
+    }
+    button {
+      font-family: inherit;
+      font-size: 0.9rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 12px;
+      padding: 0.75rem 1.25rem;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.15s;
+    }
+    button:disabled { opacity: 0.35; cursor: not-allowed; }
+    button:not(:disabled):active { transform: scale(0.97); }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), #7c3aed);
+      color: white;
+      flex: 1;
+      max-width: 200px;
+    }
+    .btn-ghost {
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+    }
+    .btn-danger {
+      background: rgba(248,113,113,0.15);
+      color: var(--danger);
+    }
+    .transcript {
+      max-height: 220px;
+      overflow-y: auto;
+      padding: 0 1rem 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+    .bubble {
+      padding: 0.65rem 0.9rem;
+      border-radius: 14px;
+      font-size: 0.9rem;
+      line-height: 1.45;
+      max-width: 92%;
+    }
+    .bubble.user {
+      align-self: flex-end;
+      background: var(--user);
+      border-bottom-right-radius: 4px;
+    }
+    .bubble.astra {
+      align-self: flex-start;
+      background: var(--astra);
+      border-bottom-left-radius: 4px;
+    }
+    .bubble .who {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 0.2rem;
+    }
+    .hint {
+      text-align: center;
+      font-size: 0.75rem;
+      color: var(--muted);
+      padding: 0 1rem 1rem;
+    }
+    audio { display: none; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="header">
+      <h1>Astra</h1>
+      <p id="subtitle">Technical interview · Voice · VAD</p>
+    </div>
+    <div class="orb-wrap">
+      <div id="orb" class="orb idle">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5">
+          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+          <path d="M19 10v1a7 7 0 0 1-14 0v-1"/>
+          <line x1="12" y1="18" x2="12" y2="22"/>
+        </svg>
+      </div>
+    </div>
+    <p id="statusPill" class="status-pill">Ready</p>
+    <div id="transcript" class="transcript"></div>
+    <p class="hint">Technical interview · Speak clearly · Say &quot;alvida&quot; to end</p>
+    <div class="lang-row">
+      <label for="langSelect">Language</label>
+      <select id="langSelect" aria-label="Interview language">
+        <option value="en" selected>English</option>
+        <option value="hi">Hindi</option>
+        <option value="hinglish">Hinglish</option>
+        <option value="auto">Auto</option>
+      </select>
+    </div>
+    <div class="controls">
+      <button id="btnStart" type="button" class="btn-primary">Start interview</button>
+      <button id="btnEnd" type="button" class="btn-danger" disabled>End</button>
+    </div>
+  </div>
+  <audio id="player" playsinline></audio>
+  <script src="/static/voice-stream-client.js"></script>
+
+  <script>
+    const API = window.location.origin;
+    const WS_URL = (location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host + '/ws/voice';
+    const USE_STREAMING = true;
+    const VAD = {
+      silenceMs: 1200,
+      minSpeechMs: 500,
+      threshold: 0.028,
+      flushMs: 200,
+    };
+    const MIN_AUDIO_BYTES = 2048;
+
+    let sessionId = null;
+    let streamClient = null;
+    let useStreaming = USE_STREAMING;
+    let partialUser = null;
+    let partialAstra = null;
+    let astraDeltaBuf = '';
+    let callActive = false;
+    let isProcessing = false;
+    let isPlaying = false;
+    let micCleanup = null;
+    let processedStream = null;
+    let mediaRecorder = null;
+    let speechChunks = [];
+    let capturing = false;
+    let speechStartedAt = 0;
+    let lastSpeechAt = 0;
+    let vadActive = false;
+    let analyser = null;
+    let audioContext = null;
+    let rafId = null;
+    let synthesizingVoice = false;
+    let heardStreamAudio = false;
+
+    const orb = document.getElementById('orb');
+    const statusPill = document.getElementById('statusPill');
+    const transcript = document.getElementById('transcript');
+    const player = document.getElementById('player');
+    const btnStart = document.getElementById('btnStart');
+    const btnEnd = document.getElementById('btnEnd');
+    const langSelect = document.getElementById('langSelect');
+
+    const LANG_STORAGE_KEY = 'astra_bot_lang';
+
+    function getSelectedLanguage() {
+      return langSelect ? langSelect.value : 'en';
+    }
+
+    function initLanguageSelect() {
+      const params = new URLSearchParams(location.search);
+      const fromUrl = params.get('lang');
+      const stored = sessionStorage.getItem(LANG_STORAGE_KEY);
+      const val = fromUrl || stored || 'en';
+      if (langSelect && ['en', 'hi', 'hinglish', 'auto'].includes(val)) {
+        langSelect.value = val;
+      }
+      if (langSelect) {
+        langSelect.addEventListener('change', () => {
+          sessionStorage.setItem(LANG_STORAGE_KEY, langSelect.value);
+        });
+      }
+    }
+    initLanguageSelect();
+
+    function setOrb(mode) {
+      orb.className = 'orb ' + mode;
+    }
+    function setStatus(text, cls) {
+      statusPill.textContent = text;
+      statusPill.className = 'status-pill ' + (cls || '');
+    }
+
+    function addBubble(role, text, partial) {
+      if (partial) {
+        const cls = role === 'You' ? 'user' : 'astra';
+        const ref = role === 'You' ? partialUser : partialAstra;
+        if (ref && ref.parentNode) ref.remove();
+        const div = document.createElement('div');
+        div.className = 'bubble ' + cls;
+        div.style.opacity = '0.75';
+        div.innerHTML = '<div class="who">' + role + '</div>' + escapeHtml(text);
+        transcript.appendChild(div);
+        if (role === 'You') partialUser = div; else partialAstra = div;
+        transcript.scrollTop = transcript.scrollHeight;
+        return;
+      }
+      if (role === 'You' && partialUser) { partialUser.remove(); partialUser = null; }
+      if (role === 'Astra' && partialAstra) { partialAstra.remove(); partialAstra = null; }
+      const div = document.createElement('div');
+      div.className = 'bubble ' + (role === 'You' ? 'user' : 'astra');
+      div.innerHTML = '<div class="who">' + role + '</div>' + escapeHtml(text);
+      transcript.appendChild(div);
+      transcript.scrollTop = transcript.scrollHeight;
+    }
+    function escapeHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    async function playB64(b64, mime) {
+      if (!b64) return;
+      isPlaying = true;
+      setOrb('speaking');
+      setStatus('Astra speaking', 'busy');
+      player.src = 'data:' + (mime || 'audio/wav') + ';base64,' + b64;
+      await player.play().catch(() => {});
+      await new Promise((resolve) => {
+        const done = () => { player.removeEventListener('ended', done); resolve(); };
+        player.addEventListener('ended', done);
+        setTimeout(done, 45000);
+      });
+      isPlaying = false;
+      if (callActive) {
+        setOrb('idle');
+        setStatus('Listening', 'active');
+      }
+    }
+
+    function parseApiError(text, status) {
+      try {
+        const j = JSON.parse(text);
+        if (j.detail) return typeof j.detail === 'string' ? j.detail : JSON.stringify(j.detail);
+      } catch (_) {}
+      return text || ('HTTP ' + status);
+    }
+
+    async function api(path, opts) {
+      const headers = { 'ngrok-skip-browser-warning': '1', ...(opts.headers || {}) };
+      const res = await fetch(API + path, { ...opts, headers });
+      const text = await res.text();
+      if (!res.ok) {
+        const err = new Error(parseApiError(text, res.status));
+        err.status = res.status;
+        throw err;
+      }
+      try { return JSON.parse(text); } catch { return text; }
+    }
+
+    function flushAndStopRecorder() {
+      if (!mediaRecorder || mediaRecorder.state !== 'recording') return;
+      try { mediaRecorder.requestData(); } catch (_) {}
+      setTimeout(() => {
+        if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+      }, VAD.flushMs);
+    }
+
+    async function acquireProcessedMic() {
+      const raw = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: { ideal: 1 },
+        },
+        video: false,
+      });
+      audioContext = new AudioContext();
+      const source = audioContext.createMediaStreamSource(raw);
+      const highPass = audioContext.createBiquadFilter();
+      highPass.type = 'highpass';
+      highPass.frequency.value = 100;
+      const compressor = audioContext.createDynamicsCompressor();
+      compressor.threshold.value = -24;
+      compressor.knee.value = 12;
+      compressor.ratio.value = 3;
+      compressor.attack.value = 0.003;
+      compressor.release.value = 0.15;
+      const dest = audioContext.createMediaStreamDestination();
+      source.connect(highPass);
+      highPass.connect(compressor);
+      compressor.connect(dest);
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 512;
+      compressor.connect(analyser);
+      processedStream = dest.stream;
+      micCleanup = () => {
+        cancelAnimationFrame(rafId);
+        try { source.disconnect(); highPass.disconnect(); compressor.disconnect(); } catch (_) {}
+        dest.stream.getTracks().forEach((t) => t.stop());
+        raw.getTracks().forEach((t) => t.stop());
+        void audioContext.close();
+      };
+    }
+
+    function getLevel() {
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      analyser.getByteFrequencyData(data);
+      let sum = 0;
+      for (let i = 0; i < data.length; i++) sum += data[i];
+      return sum / data.length / 255;
+    }
+
+    function startVadLoop() {
+      const buf = new Uint8Array(analyser.frequencyBinCount);
+      function tick() {
+        if (!callActive) return;
+        const level = getLevel();
+        const now = Date.now();
+        const loud = level > VAD.threshold;
+
+        if (!isProcessing && !isPlaying) {
+          if (loud) {
+            if (!vadActive) {
+              vadActive = true;
+              capturing = true;
+              speechChunks = [];
+              speechStartedAt = now;
+              lastSpeechAt = now;
+              setOrb('listening');
+              setStatus('Hearing you', 'active');
+            } else {
+              lastSpeechAt = now;
+            }
+          } else if (vadActive) {
+            const silentFor = now - lastSpeechAt;
+            const spokeMs = lastSpeechAt - speechStartedAt;
+            if (silentFor >= VAD.silenceMs && spokeMs >= VAD.minSpeechMs) {
+              vadActive = false;
+              capturing = false;
+              flushAndStopRecorder();
+              setOrb('idle');
+              setStatus('Processing', 'busy');
+            }
+          } else {
+            setOrb('idle');
+            setStatus('Listening', 'active');
+          }
+        }
+        rafId = requestAnimationFrame(tick);
+      }
+      tick();
+    }
+
+    async function sendUtterance(blob) {
+      if (!sessionId || isProcessing) return;
+      if (!blob || blob.size < MIN_AUDIO_BYTES) {
+        setStatus('Listening', 'active');
+        return;
+      }
+      isProcessing = true;
+      setOrb('thinking');
+      setStatus('Thinking…', 'busy');
+      try {
+        const fd = new FormData();
+        fd.append('session_id', sessionId);
+        fd.append('audio', blob, 'utterance.webm');
+        const data = await api('/api/v1/demo/turn', { method: 'POST', body: fd });
+        if (data.user_text) addBubble('You', data.user_text);
+        if (data.assistant_text) addBubble('Astra', data.assistant_text);
+        const lang = data.reply_language || data.detected_language || '';
+        if (lang) setStatus('Listening · ' + lang, 'active');
+        await playB64(data.assistant_audio_base64, data.mime);
+        if (data.ended) endCallUi();
+      } catch (e) {
+        if (e.status === 422) {
+          setStatus('Could not hear you — try again', 'active');
+        } else {
+          setStatus('Error', '');
+          addBubble('Astra', 'Sorry, something went wrong.');
+        }
+        console.error(e);
+      } finally {
+        isProcessing = false;
+        if (callActive && !isPlaying) {
+          setOrb('idle');
+          setStatus('Listening', 'active');
+        }
+      }
+    }
+
+    function endCallUi() {
+      callActive = false;
+      btnEnd.disabled = true;
+      btnStart.disabled = false;
+      if (langSelect) langSelect.disabled = false;
+      setOrb('idle');
+      setStatus('Call ended', '');
+      if (streamClient) void streamClient.disconnect();
+      streamClient = null;
+      if (micCleanup) micCleanup();
+    }
+
+    async function unpauseMicAfterPlayback() {
+      if (!streamClient || !callActive) return;
+      await streamClient.waitForPlaybackDone();
+      isPlaying = false;
+      synthesizingVoice = false;
+      streamClient.setListenPaused(false);
+      if (callActive && !isProcessing) {
+        setOrb('idle');
+        setStatus('Listening · ' + getSelectedLanguage(), 'active');
+      }
+    }
+
+    async function startStreamingCall(cfg, candidateName) {
+      heardStreamAudio = false;
+      streamClient = new VoiceStreamClient({
+        wsUrl: WS_URL,
+        vadThreshold: 0.022,
+        onConnectionChange: (connected) => {
+          if (!connected && callActive) setStatus('Reconnecting…', 'busy');
+        },
+        onError: (err) => console.warn('stream', err),
+        onSpeakingChange: (speaking) => {
+          isPlaying = speaking;
+          if (speaking) {
+            setOrb('speaking');
+            setStatus('Astra speaking', 'busy');
+            synthesizingVoice = false;
+            heardStreamAudio = true;
+          } else if (callActive && !isProcessing && !synthesizingVoice) {
+            setOrb('idle');
+            setStatus('Listening · ' + getSelectedLanguage(), 'active');
+          }
+        },
+        onEvent: (msg) => {
+          if (msg.type === 'stt_partial') addBubble('You', msg.text || '', true);
+          if (msg.type === 'stt_final') addBubble('You', msg.text || '', false);
+          if (msg.type === 'audio_config') {
+            streamClient.setListenPaused(true);
+            isPlaying = true;
+            synthesizingVoice = false;
+          }
+          if (msg.type === 'assistant_delta') {
+            streamClient.setListenPaused(true);
+            astraDeltaBuf += msg.text || '';
+            addBubble('Astra', astraDeltaBuf, true);
+            if (!heardStreamAudio && !synthesizingVoice) {
+              synthesizingVoice = true;
+              setOrb('thinking');
+              setStatus('Synthesizing voice…', 'busy');
+            }
+          }
+          if (msg.type === 'assistant_text') {
+            astraDeltaBuf = '';
+            addBubble('Astra', msg.text || '', false);
+          }
+          if (msg.type === 'turn_start') {
+            astraDeltaBuf = '';
+            heardStreamAudio = false;
+            synthesizingVoice = false;
+            streamClient.setListenPaused(true);
+            setOrb('thinking');
+            setStatus('Thinking…', 'busy');
+            isProcessing = true;
+          }
+          if (msg.type === 'turn_end') {
+            isProcessing = false;
+            streamClient.setListenPaused(true);
+            void unpauseMicAfterPlayback();
+          }
+          if (msg.type === 'error') {
+            const detail = msg.message ? String(msg.message) : '';
+            addBubble('Astra', detail ? 'Error: ' + detail : 'Sorry, something went wrong.');
+            isProcessing = false;
+            synthesizingVoice = false;
+            isPlaying = false;
+            if (streamClient && callActive) streamClient.setListenPaused(false);
+          }
+        },
+      });
+      await streamClient.connect({
+        stt_provider: cfg.stt_provider || 'whisper_chunk',
+        tts_provider: cfg.tts_provider || 'f5',
+        candidate_name: candidateName,
+        language: getSelectedLanguage(),
+      });
+      await streamClient.ensurePlaybackReady(24000);
+      streamClient.setListenPaused(true);
+      await streamClient.startMic();
+      setTimeout(() => {
+        if (streamClient && callActive) streamClient.setListenPaused(false);
+      }, 3500);
+    }
+
+    async function startRestCall(candidateName) {
+      useStreaming = false;
+      const data = await api('/api/v1/demo/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          candidate_name: candidateName,
+          language: getSelectedLanguage(),
+        }),
+      });
+      sessionId = data.session_id;
+      addBubble('Astra', data.assistant_text);
+      await playB64(data.assistant_audio_base64, data.mime);
+      await acquireProcessedMic();
+      const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus' : 'audio/webm';
+      mediaRecorder = new MediaRecorder(processedStream, { mimeType: mime });
+      mediaRecorder.ondataavailable = (e) => {
+        if (capturing && e.data.size > 0) speechChunks.push(e.data);
+      };
+      mediaRecorder.onstop = async () => {
+        const blob = speechChunks.length ? new Blob(speechChunks, { type: mime }) : null;
+        speechChunks = [];
+        if (blob && blob.size >= MIN_AUDIO_BYTES) await sendUtterance(blob);
+        else if (callActive) setStatus('Listening', 'active');
+        if (callActive && mediaRecorder.state === 'inactive') mediaRecorder.start(200);
+      };
+      mediaRecorder.start(200);
+      startVadLoop();
+    }
+
+    btnStart.onclick = async () => {
+      try {
+        if (langSelect) langSelect.disabled = true;
+        btnStart.disabled = true;
+        setStatus('Starting…', 'busy');
+        let cfg = { candidate_name: 'Aashish', stt_provider: 'whisper_chunk', tts_provider: 'f5', interview_job_title: 'Software Engineer' };
+        try {
+          cfg = await api('/api/v1/demo/config');
+        } catch (_) {}
+        const subtitle = document.getElementById('subtitle');
+        if (subtitle && cfg.interview_job_title) {
+          subtitle.textContent = 'Technical interview · ' + cfg.interview_job_title;
+        }
+        const params = new URLSearchParams(location.search);
+        const candidateName = params.get('name') || cfg.candidate_name || 'Aashish';
+        if (cfg.models_ready === false) {
+          setStatus('Loading models…', 'busy');
+          for (let i = 0; i < 90 && cfg.models_ready !== true; i++) {
+            await new Promise((r) => setTimeout(r, 2000));
+            try { cfg = await api('/api/v1/demo/config'); } catch (_) {}
+          }
+        }
+        callActive = true;
+        btnEnd.disabled = false;
+        sessionStorage.setItem(LANG_STORAGE_KEY, getSelectedLanguage());
+        const greeting = await api('/api/v1/demo/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            candidate_name: candidateName,
+            language: getSelectedLanguage(),
+          }),
+        });
+        sessionId = greeting.session_id;
+        addBubble('Astra', greeting.assistant_text);
+        await playB64(greeting.assistant_audio_base64, greeting.mime);
+        if (useStreaming && typeof VoiceStreamClient !== 'undefined') {
+          try {
+            await startStreamingCall(cfg, candidateName);
+            setStatus('Listening', 'active');
+            return;
+          } catch (e) {
+            console.warn('WebSocket streaming failed, using REST', e);
+          }
+        }
+        await startRestCall(candidateName);
+        setStatus('Listening', 'active');
+      } catch (e) {
+        setStatus('Error', '');
+        alert(typeof e === 'string' ? e : e.message);
+        btnStart.disabled = false;
+        if (langSelect) langSelect.disabled = false;
+        callActive = false;
+      }
+    };
+
+    btnEnd.onclick = async () => {
+      if (streamClient) await streamClient.disconnect();
+      streamClient = null;
+      if (sessionId) {
+        const fd = new FormData();
+        fd.append('session_id', sessionId);
+        await api('/api/v1/demo/end', { method: 'POST', body: fd }).catch(() => {});
+      }
+      endCallUi();
+    };
+  </script>
+</body>
+</html>
