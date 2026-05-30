@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-from config import TTS_LLM_SCRIPT_STRICT, TTS_OUTPUT_SCRIPT
+from config import TTS_HINGLISH_ROMAN, TTS_LLM_SCRIPT_STRICT, TTS_OUTPUT_SCRIPT
 from engines.lang_detect import SessionLanguage, devanagari_ratio, is_mixed_script
 
 OutputScript = Literal['en', 'devanagari']
@@ -63,8 +63,15 @@ def uses_devanagari_output() -> bool:
     return TTS_OUTPUT_SCRIPT == 'devanagari'
 
 
+def uses_hinglish_roman() -> bool:
+    """LLM outputs natural roman Hinglish (Latin), not forced Devanagari Hindi."""
+    return TTS_HINGLISH_ROMAN
+
+
 def output_script_for_session(session_lang: SessionLanguage | None) -> OutputScript:
     if session_lang == 'en':
+        return 'en'
+    if session_lang == 'hinglish' and uses_hinglish_roman():
         return 'en'
     if uses_devanagari_output() and session_lang in ('hi', 'hinglish'):
         return 'devanagari'
@@ -92,6 +99,15 @@ def validate_assistant_script(
 
     target = output_script_for_session(session_lang)
 
+    if session_lang == 'hinglish' and uses_hinglish_roman():
+        if devanagari_ratio(cleaned) >= 0.08 and _roman_hindi_marker_count(cleaned) == 0:
+            return True
+        if _roman_hindi_marker_count(cleaned) >= 1:
+            return True
+        if is_mixed_script(cleaned):
+            return True
+        return len(_latin_tokens(cleaned)) >= 2
+
     if target == 'en':
         if devanagari_ratio(cleaned) >= 0.05:
             return False
@@ -102,7 +118,7 @@ def validate_assistant_script(
             return False
         return _roman_hindi_marker_count(cleaned) == 0
 
-    # hinglish
+    # hinglish (Devanagari mode)
     if devanagari_ratio(cleaned) < 0.08:
         return False
     if _roman_hindi_marker_count(cleaned) > 0:
@@ -126,10 +142,11 @@ def system_script_rules(session_lang: SessionLanguage | None) -> str:
             'Use warm, simple spoken Hindi (बताइए, समझ गई, बहुत अच्छा) — avoid heavy Sanskrit.'
         )
     return (
-        'OUTPUT SCRIPT (mandatory): Hinglish session — every Hindi word MUST be Devanagari. '
-        'English and technical terms stay Latin (React, Python, interview, Welcome). '
-        'Never romanize Hindi. Write "शुरू करने से पहले" not "Shuru karne se pehle". '
-        'Use warm, conversational Hindi — friendly and clear when spoken aloud.'
+        'OUTPUT SCRIPT (mandatory): Hinglish session — write natural roman Hinglish in Latin script. '
+        'Mix Hindi and English the way Indians speak: "Aap apne project ke baare mein batayiye." '
+        'English tech terms stay English (React, FastAPI, engineer). '
+        'VOICE PACE: Speak slowly and clearly when read aloud — use commas for natural pauses, '
+        'short clauses, warm storyteller tone. Never rush between Hindi and English words.'
     )
 
 
@@ -149,11 +166,11 @@ def llm_language_hint_strict(session_lang: SessionLanguage | None) -> str:
         )
     if session_lang == 'hinglish':
         return (
-            'CRITICAL: Hinglish session — Hindi words in Devanagari, English/tech in Latin. '
-            'Example wrong: आप apne project ke baare mein batayiye. '
-            'Example right: आप apne project के बारे में बताइए. '
-            'Warm, friendly tone — short natural sentences. '
-            'Maximum twelve spoken words per turn.'
+            'CRITICAL: Reply in natural roman Hinglish (Latin script only). '
+            'Example: "Phir Aashish ne decide kiya, ki woh engineer banega." '
+            'Mix Hindi and English naturally; tech words in English. '
+            'Speak slowly for voice: use commas where you pause, short warm clauses, '
+            'never rush. Maximum twelve spoken words per turn.'
         )
     return llm_language_hint_strict('hinglish')
 

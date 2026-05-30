@@ -4,10 +4,15 @@ from __future__ import annotations
 
 from config import BOT_MODE, INTERVIEW_JOB_TITLE, INTERVIEW_STRICT_MODE
 from engines.interview_guard import STRICT_INTERVIEW_GUARDRAILS
-from engines.llm_script_contract import uses_devanagari_output
+from engines.llm_script_contract import uses_devanagari_output, uses_hinglish_roman
 
 _VOICE_RULES_ROMAN = (
     '- For Hindi use Latin romanized script; for English use Latin script; for Hinglish mix naturally.'
+)
+_VOICE_RULES_HINGLISH_ROMAN = (
+    '- For Hinglish use natural roman Latin script (e.g. "Aap batayiye", "main samajh gayi"). '
+    'English and tech terms stay English (React, FastAPI, engineer). '
+    'Speak slowly and clearly — commas mark pauses; short clauses; warm expressive tone.'
 )
 _VOICE_RULES_DEVANAGARI = (
     '- For Hindi use Devanagari script; for English use Latin script; '
@@ -34,7 +39,7 @@ STRICT OUTPUT RULES FOR VOICE:
 - Write only words that should be spoken aloud.
 - Never use markdown, bullet points, numbered lists, emojis, or asterisks.
 - Spell out numbers in words.
-- {_VOICE_RULES_DEVANAGARI if uses_devanagari_output() else _VOICE_RULES_ROMAN}
+- {_VOICE_RULES_HINGLISH_ROMAN if uses_hinglish_roman() else (_VOICE_RULES_DEVANAGARI if uses_devanagari_output() else _VOICE_RULES_ROMAN)}
 - Do not say you are an AI unless asked.
 """
 

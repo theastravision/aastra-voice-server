@@ -371,8 +371,8 @@ export default function TtsLabPanel() {
 
           {(language === 'hi' || language === 'hinglish') && (
             <p className="text-xs text-emerald-400/90">
-              Indian Hindi voice (Swara ref). Use Devanagari for Hindi words. MeloTTS is not used
-              for Hindi — F5 clones the Indian reference clip.
+              Roman Hinglish + auto pauses (, ...) for Swara. Speak/type naturally — commas slow
+              the voice down.
             </p>
           )}
 

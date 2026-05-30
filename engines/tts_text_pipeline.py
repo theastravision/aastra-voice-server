@@ -10,10 +10,11 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from config import F5_HINGLISH_SCRIPT, HINGLISH_VOCAB_DIR, TTS_DEVANAGARI_SOURCE, TTS_OUTPUT_SCRIPT
+from config import F5_HINGLISH_SCRIPT, HINGLISH_VOCAB_DIR, TTS_DEVANAGARI_SOURCE, TTS_HINGLISH_ROMAN, TTS_OUTPUT_SCRIPT
 from engines.hinglish_normalize import normalize_hinglish
 from engines.hinglish_vocab import hinglish_particles
 from engines.llm_script_contract import validate_assistant_script
+from engines.tts_pacing import add_speech_pauses
 
 logger = logging.getLogger(__name__)
 
@@ -298,6 +299,8 @@ def _resolve_output_script(
     if reply_script == 'en':
         return 'roman'
     if reply_script in ('hi', 'hinglish'):
+        if reply_script == 'hinglish' and TTS_HINGLISH_ROMAN:
+            return 'roman'
         if TTS_OUTPUT_SCRIPT == 'devanagari':
             return 'devanagari'
         if engine == 'f5' and F5_HINGLISH_SCRIPT == 'devanagari':
@@ -411,18 +414,16 @@ def prepare_text_for_tts(
             compliant = validate_assistant_script(text, effective)
         if use_llm_fast and compliant:
             result = normalize_mixed_script(text)
-            logger.debug(
-                'tts_preprocess_ms=%.2f fast_path=true',
-                (time.perf_counter() - started) * 1000,
-            )
-            return result
-        result = to_devanagari_mixed(text, reply_script=script)
+        else:
+            result = to_devanagari_mixed(text, reply_script=script)
         logger.debug(
-            'tts_preprocess_ms=%.2f fast_path=false',
+            'tts_preprocess_ms=%.2f fast_path=%s',
             (time.perf_counter() - started) * 1000,
+            use_llm_fast and compliant,
         )
-        return result
-    return normalize_hinglish(text)
+        return add_speech_pauses(result, reply_script=script)
+    result = normalize_hinglish(text)
+    return add_speech_pauses(result, reply_script=script)
 
 
 def prepare_text_for_f5_tts(

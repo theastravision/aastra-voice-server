@@ -20,6 +20,7 @@ from config import (
     F5_DTYPE,
     F5_HF_CACHE_DIR,
     F5_HINGLISH_SCRIPT,
+    F5_HINGLISH_SPEED,
     F5_MODEL,
     F5_NFE_STEPS,
     F5_NO_SPLIT_MAX_CHARS,
@@ -247,7 +248,11 @@ class F5TTSInferenceManager:
         ref_audio_tensor, ref_sr = torchaudio.load(ref_path)
         ref_duration = ref_audio_tensor.shape[-1] / ref_sr
         ref_bytes = len(ref_text.encode('utf-8'))
-        speed = profile.speed if profile.speed is not None else F5_SPEED
+        script = (self._active_reply_script or '').lower()
+        if script in ('hi', 'hinglish'):
+            speed = F5_HINGLISH_SPEED
+        else:
+            speed = profile.speed if profile.speed is not None else F5_SPEED
         max_chars = max(
             50,
             int(ref_bytes / max(ref_duration, 0.1) * (22 - ref_duration) * speed),

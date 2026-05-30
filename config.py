@@ -91,6 +91,20 @@ TTS_LLM_SCRIPT_STRICT = os.environ.get('TTS_LLM_SCRIPT_STRICT', 'true').lower() 
 )
 TTS_HINGLISH_ENGINE = os.environ.get('TTS_HINGLISH_ENGINE', 'f5_devanagari').strip().lower()
 F5_HINGLISH_SCRIPT = os.environ.get('F5_HINGLISH_SCRIPT', 'devanagari').strip().lower()
+# Roman Hinglish from LLM (Latin) — recommended for Swara/F5 natural pacing
+TTS_HINGLISH_ROMAN = os.environ.get('TTS_HINGLISH_ROMAN', 'true').lower() in (
+    '1',
+    'true',
+    'yes',
+)
+# Insert ", ..." / script-boundary pauses before F5 synthesis
+TTS_HINGLISH_PACE_PAUSES = os.environ.get('TTS_HINGLISH_PACE_PAUSES', 'true').lower() in (
+    '1',
+    'true',
+    'yes',
+)
+# Slower F5 duration for hi/hinglish (1.0 = default; 0.85–0.92 = clearer)
+F5_HINGLISH_SPEED = float(os.environ.get('F5_HINGLISH_SPEED', '0.88'))
 F5_CFG_STRENGTH = float(os.environ.get('F5_CFG_STRENGTH', '2.2'))
 F5_DEVANAGARI_NO_SPLIT_MAX_CHARS = int(
     os.environ.get('F5_DEVANAGARI_NO_SPLIT_MAX_CHARS', '90')

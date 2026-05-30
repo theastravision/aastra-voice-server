@@ -9,9 +9,10 @@ from engines.llm_script_contract import (
 from engines.tts_text_pipeline import normalize_mixed_script, prepare_text_for_tts
 
 
-def test_output_script_hinglish_devanagari():
-    assert output_script_for_session('hinglish') == 'devanagari'
+def test_output_script_hinglish_roman():
+    assert output_script_for_session('hinglish') == 'en'
     assert output_script_for_session('en') == 'en'
+    assert output_script_for_session('hi') == 'devanagari'
 
 
 def test_validate_compliant_hinglish():
@@ -19,9 +20,17 @@ def test_validate_compliant_hinglish():
     assert validate_assistant_script(text, 'hinglish') is True
 
 
-def test_validate_rejects_roman_hindi_hinglish():
+def test_validate_roman_hinglish():
     text = 'Shuru karne se pehle, screen share on rakhein.'
-    assert validate_assistant_script(text, 'hinglish') is False
+    assert validate_assistant_script(text, 'hinglish') is True
+
+
+def test_validate_roman_hinglish_story():
+    text = (
+        'Phir Aashish ne decide kiya, ki woh bada hokar engineer banega, '
+        'aur aisi technology banayega.'
+    )
+    assert validate_assistant_script(text, 'hinglish') is True
 
 
 def test_validate_english_only():
@@ -37,18 +46,13 @@ def test_normalize_mixed_script_preserves_devanagari():
     assert 'करते' in result
 
 
-def test_prepare_text_fast_path_llm_compliant():
-    text = 'आप backend project के बारे में बताइए।'
-    result = prepare_text_for_tts(
-        text,
-        reply_script='hinglish',
-        llm_compliant=True,
-    )
-    assert 'आप' in result
-    assert 'backend' in result
-    assert validate_assistant_script(result, 'hinglish')
+def test_prepare_text_roman_hinglish_pacing():
+    text = 'Aap batayiye, apne project ke baare mein.'
+    result = prepare_text_for_tts(text, reply_script='hinglish', llm_compliant=False)
+    assert ', ...' in result
+    assert validate_assistant_script(text, 'hinglish')
 
 
 def test_strict_hints_non_empty():
-    assert 'Devanagari' in llm_language_hint_strict('hinglish')
+    assert 'roman' in llm_language_hint_strict('hinglish').lower()
     assert 'mandatory' in system_script_rules('hi').lower()
