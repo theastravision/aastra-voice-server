@@ -50,10 +50,15 @@ def run_warmup_background() -> None:
 
             if TTS_HINGLISH_ENGINE == 'melotts':
                 try:
-                    from engines.melo_tts_engine import warmup as melo_warmup
+                    from engines.melo_tts_engine import melotts_available, warmup as melo_warmup
 
-                    logger.info('Background warmup: MeloTTS...')
-                    melo_warmup()
+                    if melotts_available():
+                        logger.info('Background warmup: MeloTTS...')
+                        melo_warmup()
+                    else:
+                        logger.warning(
+                            'TTS_HINGLISH_ENGINE=melotts but package not installed; using F5'
+                        )
                 except Exception:
                     logger.warning('MeloTTS warmup skipped', exc_info=True)
 

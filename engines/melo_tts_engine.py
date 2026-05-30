@@ -18,6 +18,21 @@ logger = logging.getLogger(__name__)
 
 _manager: MeloTTSManager | None = None
 _manager_lock = Lock()
+_import_error: str | None = None
+
+
+def melotts_available() -> bool:
+    """True when melo package is importable."""
+    global _import_error
+    if _import_error is not None:
+        return False
+    try:
+        from melo.api import TTS  # noqa: F401
+
+        return True
+    except ImportError as exc:
+        _import_error = str(exc)
+        return False
 
 
 def get_manager() -> MeloTTSManager:
