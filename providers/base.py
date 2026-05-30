@@ -30,7 +30,7 @@ class StreamingSTT(ABC):
         ...
 
     @abstractmethod
-    async def push_pcm(self, chunk: bytes) -> list[SttEvent]:
+    async def push_pcm(self, chunk: bytes, *, rms_energy: float | None = None) -> list[SttEvent]:
         ...
 
     @abstractmethod

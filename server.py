@@ -98,6 +98,7 @@ class InterviewSession:
         self._last_stt_text = ''
         self._best_stt_text = ''
         self._processing = False
+        self._is_greeting_done = False
         self._empty_prompt_playing = False
         self._last_empty_prompt_at = 0.0
         self._last_idle_nudge_at = 0.0
@@ -140,8 +141,11 @@ class InterviewSession:
         await self._bus.session_event(self.session_id, 'session_end')
 
     async def play_greeting(self) -> None:
+        if self._is_greeting_done:
+            return
         if self._processing:
             return
+        self._is_greeting_done = True
         self._cancel_listen_idle()
 
         if interview_opening_enabled() and BOT_MODE == 'interview':
@@ -199,7 +203,7 @@ class InterviewSession:
             self._best_stt_text = best
 
     async def on_pcm_chunk(self, chunk: bytes, *, rms_energy: float = 0.0) -> None:
-        if self._closed:
+        if self._closed or self._processing:
             return
         if rms_energy > 0.02:
             self._cancel_listen_idle()
@@ -234,7 +238,7 @@ class InterviewSession:
                 )
 
     async def on_end_utterance(self) -> None:
-        if self._closed:
+        if self._closed or self._processing:
             return
         self._cancel_listen_idle()
         if self._end_utterance_task and not self._end_utterance_task.done():

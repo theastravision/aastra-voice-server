@@ -65,6 +65,8 @@ load_env_file "$ROOT/.env" 2>/dev/null || true
 
 export HOST="${HOST:-*}"
 export PORT="${PORT:-8000}"
+export STT_VAD_SILENCE_MS="800"
+export WHISPER_VAD_FILTER="true"
 
 step() {
   echo ""

@@ -12,12 +12,14 @@ from config import (
     STT_MIN_SPEECH_MS,
     STT_TRANSCRIBE_TIMEOUT_SECS,
     STT_UTTERANCE_MAX_SECS,
+    STT_VAD_SILENCE_MS,
     STREAM_SAMPLE_RATE,
     WHISPER_BEAM_SIZE,
     WHISPER_COMPUTE_TYPE,
     WHISPER_DEVICE,
     WHISPER_MODEL,
     WHISPER_MODEL_PATH,
+    WHISPER_VAD_FILTER,
 )
 from engines.lang_detect import resolve_whisper_language
 from engines.stt_filters import is_phantom_stt_text, pick_best_stt_text
@@ -79,11 +81,20 @@ class FasterWhisperInferenceManager:
         if not pcm:
             return {'text': '', 'detected_language': None}
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
-            tmp.write(_pcm_to_wav(pcm))
+            wav_bytes = _pcm_to_wav(pcm)
+            try:
+                from pydub import AudioSegment
+                import io
+                audio = AudioSegment.from_file(io.BytesIO(wav_bytes), format="wav")
+                if audio.max_dBFS < 0:
+                    audio = audio.apply_gain(-audio.max_dBFS)
+                audio.export(tmp.name, format="wav")
+            except ImportError:
+                tmp.write(wav_bytes)
             wav_path = tmp.name
         try:
             lang = resolve_whisper_language(language_hint)
-            kwargs = {**_build_transcribe_kwargs(lang), 'vad_filter': False}
+            kwargs = {**_build_transcribe_kwargs(lang), 'vad_filter': WHISPER_VAD_FILTER, 'vad_parameters': dict(min_silence_duration_ms=STT_VAD_SILENCE_MS)}
             segments, info = self._model.transcribe(wav_path, **kwargs)
             text = ''.join(seg.text for seg in segments).strip()
             detected = getattr(info, 'language', None) or lang

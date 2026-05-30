@@ -6,3 +6,4 @@ venv/
 *.mp3
 *.wav
 *.zip
+.env

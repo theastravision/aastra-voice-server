@@ -24,7 +24,7 @@ _WORD = re.compile(r'\S+')
 
 
 class PhraseBuffer:
-    """Flush 3–5 word mini-phrases to TTS without waiting for full sentences."""
+    """Flush phrases to TTS immediately upon sentence completion marks."""
 
     def __init__(
         self,
@@ -33,23 +33,6 @@ class PhraseBuffer:
         next_min_words: int = STREAM_LLM_NEXT_MIN_WORDS,
     ) -> None:
         self.buffer = ''
-        self.is_first_chunk = True
-        self.first_min_words = first_min_words
-        self.next_min_words = next_min_words
-
-    def _word_count(self, text: str) -> int:
-        return len(_WORD.findall(text))
-
-    def _should_flush(self) -> bool:
-        if not self.buffer.strip():
-            return False
-        words = self._word_count(self.buffer)
-        target = self.first_min_words if self.is_first_chunk else self.next_min_words
-        if words >= target:
-            return True
-        if _PUNCT_FLUSH.search(self.buffer):
-            return words >= 1
-        return False
 
     def push(self, token: str) -> list[str]:
         self.buffer += token
@@ -58,47 +41,18 @@ class PhraseBuffer:
         if '<' in self.buffer[-8:]:
             return chunks
 
-        while self._should_flush():
-            text = self.buffer.strip()
-            if not text:
-                break
-            if self.is_first_chunk:
-                split_at = self._find_split_index(text, self.first_min_words)
+        while True:
+            match = re.search(r'[.,!?\n।]', self.buffer)
+            if match:
+                split_at = match.end()
+                chunk = self.buffer[:split_at].strip()
+                self.buffer = self.buffer[split_at:].lstrip()
+                chunk = _STRIP_MARKDOWN.sub('', chunk)
+                if chunk:
+                    chunks.append(chunk)
             else:
-                split_at = self._find_split_index(text, self.next_min_words)
-
-            if split_at <= 0:
                 break
-            chunk = text[:split_at].strip()
-            self.buffer = text[split_at:].lstrip()
-            chunk = _STRIP_MARKDOWN.sub('', chunk)
-            if chunk:
-                chunks.append(chunk)
-                self.is_first_chunk = False
         return chunks
-
-    @staticmethod
-    def _find_split_index(text: str, min_words: int) -> int:
-        words = list(_WORD.finditer(text))
-        if len(words) < min_words and not _PUNCT_FLUSH.search(text):
-            return -1
-        for match in reversed(words):
-            if match.start() == 0:
-                continue
-            prefix = text[: match.start()].rstrip()
-            if _PUNCT_FLUSH.search(prefix) or len(words[: words.index(match)]) >= min_words:
-                boundary = prefix.rfind(' ')
-                if boundary > 0:
-                    return boundary + 1
-                return match.start()
-        if _PUNCT_FLUSH.search(text):
-            for punct in (',', ';', ':', '.', '?', '!', '।'):
-                idx = text.find(punct)
-                if idx >= 0:
-                    return idx + 1
-        if len(words) >= min_words:
-            return words[min_words - 1].end()
-        return -1
 
     def flush(self) -> str:
         chunk = self.buffer.strip()
