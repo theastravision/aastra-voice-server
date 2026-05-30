@@ -10,7 +10,7 @@ if [[ -d .venv ]]; then
   source .venv/bin/activate
 fi
 
-VOICE="${VOICE:-en-IN-NeerjaNeural}"
+VOICE="${VOICE:-kn-IN-SapnaNeural}"
 
 echo "Generating interview name samples with edge-tts voice: $VOICE"
 echo "Output: data/name-samples/*.mp3"

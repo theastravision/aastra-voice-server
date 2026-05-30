@@ -65,11 +65,11 @@ def _default_registry() -> VoiceRegistry:
         voices=[
             VoiceProfile(
                 id='astra',
-                display_name='Astra (Neerja / Indian English)',
+                display_name='Astra (Sapna / Kannada)',
                 language='en-in',
                 ref_audio='assets/voices/astra_ref.wav',
                 ref_text=ASTRA_DEFAULT_REF_TEXT,
-                source='edge-tts-neerja',
+                source='edge-tts-sapna',
             ),
         ],
     )

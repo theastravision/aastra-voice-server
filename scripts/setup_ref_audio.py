@@ -16,12 +16,12 @@ _LEGACY_REF_MARKERS = ('silent spectator', 'mother nature', 'some call me nature
 
 # edge-tts voice per language — fixed defaults, not read from environment
 _EDGE_TTS_BY_LANGUAGE: dict[str, str] = {
-    'en-in': 'en-IN-NeerjaNeural',
-    'en': 'en-IN-NeerjaNeural',
+    'en-in': 'kn-IN-SapnaNeural',
+    'en': 'kn-IN-SapnaNeural',
     'hinglish': 'hi-IN-SwaraNeural',
     'hi': 'hi-IN-SwaraNeural',
 }
-_DEFAULT_EDGE_TTS = 'en-IN-NeerjaNeural'
+_DEFAULT_EDGE_TTS = 'kn-IN-SapnaNeural'
 
 
 def _edge_tts_voice_for(language: str | None) -> str:

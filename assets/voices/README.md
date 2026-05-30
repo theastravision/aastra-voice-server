@@ -4,7 +4,7 @@
 
 Do **not** use the old F5 demo clip (`basic_ref_en.wav` / “Some call me nature…”). That audio is merged into every synthesis.
 
-Generate a clean 5–10 s reference using **Neerja** (Microsoft `en-IN-NeerjaNeural` — clear Indian English, works well for English + Hindi/Hinglish):
+Generate a clean 5–10 s reference using **Sapna** (Microsoft `kn-IN-SapnaNeural` — Kannada neural voice used for F5 name/voice cloning ref):
 
 ```bash
 pip install edge-tts
@@ -19,7 +19,7 @@ python scripts/setup_ref_audio.py --hinglish-bilingual --force
 
 Set voice `astra_hinglish` in WebSocket config or `F5_REF_AUDIO=assets/voices/astra_ref_hinglish.wav`.
 
-Optional override: `ASTRA_EDGE_TTS_VOICE=en-IN-NeerjaNeural` in `.env`
+Optional override: `ASTRA_EDGE_TTS_VOICE=kn-IN-SapnaNeural` in `.env`
 
 Set `.env` to match the transcript:
 

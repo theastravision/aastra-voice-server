@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
 from engines.name_samples import NAME_SAMPLES_DIR, name_sample_path
 from engines.stt_names import load_interview_names
 
-DEFAULT_VOICE = 'en-IN-NeerjaNeural'
+DEFAULT_VOICE = 'kn-IN-SapnaNeural'
 
 
 async def _generate_one(dest: Path, text: str, voice: str) -> None:

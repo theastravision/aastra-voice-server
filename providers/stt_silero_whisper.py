@@ -7,6 +7,7 @@ import logging
 from collections.abc import Awaitable, Callable
 
 from config import STT_SILERO_TRIGGER_END_UTTERANCE
+from engines.audio_normalize import normalize_pcm_s16le
 from engines.silero_vad import SileroVadGate
 from providers.base import SttEvent, StreamingSTT
 from stt_worker import SttWorker

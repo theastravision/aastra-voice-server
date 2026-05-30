@@ -67,7 +67,7 @@ ASTRA_DEFAULT_REF_TEXT = (
     'Hello, I am Astra. I will conduct your technical interview today.'
 )
 # edge-tts voice used only by scripts/setup_ref_audio.py to bootstrap astra_ref.wav
-ASTRA_EDGE_TTS_VOICE = os.environ.get('ASTRA_EDGE_TTS_VOICE', 'en-IN-NeerjaNeural').strip()
+ASTRA_EDGE_TTS_VOICE = os.environ.get('ASTRA_EDGE_TTS_VOICE', 'kn-IN-SapnaNeural').strip()
 ASTRA_HINGLISH_BILINGUAL_REF_TEXT = (
     'Namaste, main Astra hoon. Shuru karne se pehle, screen share on rakhein. '
     'I will conduct your technical interview today. Kripya apna naam batayiye.'
