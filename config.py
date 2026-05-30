@@ -103,8 +103,24 @@ TTS_HINGLISH_PACE_PAUSES = os.environ.get('TTS_HINGLISH_PACE_PAUSES', 'true').lo
     'true',
     'yes',
 )
-# Slower F5 duration for hi/hinglish (1.0 = default; 0.85–0.92 = clearer)
-F5_HINGLISH_SPEED = float(os.environ.get('F5_HINGLISH_SPEED', '0.88'))
+# Roman syllable hyphens for English loanwords (tek-no-lo-jee, in-jin-eer)
+TTS_HINGLISH_PHONETIC_HYPHEN = os.environ.get('TTS_HINGLISH_PHONETIC_HYPHEN', 'true').lower() in (
+    '1',
+    'true',
+    'yes',
+)
+# Minimum token length for dynamic syllable hyphenation (skip ki, ne, aur)
+TTS_HINGLISH_PHONETIC_MIN_LEN = int(os.environ.get('TTS_HINGLISH_PHONETIC_MIN_LEN', '3'))
+# Reverse phonetic hyphens in hi/hinglish STT transcripts
+STT_HINGLISH_PHONETIC_DENORM = os.environ.get('STT_HINGLISH_PHONETIC_DENORM', 'true').lower() in (
+    '1',
+    'true',
+    'yes',
+)
+# Pause style: standard (comma + light cues) or story (full-breath ellipses)
+TTS_HINGLISH_PAUSE_STYLE = os.environ.get('TTS_HINGLISH_PAUSE_STYLE', 'story').strip().lower()
+# Slower F5 duration for hi/hinglish (1.0 = default; 0.82–0.92 = clearer)
+F5_HINGLISH_SPEED = float(os.environ.get('F5_HINGLISH_SPEED', '0.82'))
 F5_CFG_STRENGTH = float(os.environ.get('F5_CFG_STRENGTH', '2.2'))
 F5_DEVANAGARI_NO_SPLIT_MAX_CHARS = int(
     os.environ.get('F5_DEVANAGARI_NO_SPLIT_MAX_CHARS', '90')

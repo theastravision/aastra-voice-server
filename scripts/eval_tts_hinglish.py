@@ -17,6 +17,10 @@ GOLDEN_PHRASES = [
     'Welcome Rahul. Apne baare mein thoda batayiye.',
     'React use karta hoon aur backend mein Python prefer karta hoon.',
     'Kripya apna full naam boliye.',
+    (
+        'Phir Aashish ne decide kiya, ki woh bada hokar engineer banega. '
+        'Aur aisi technology banayega, jo gaon, shehar aur desh ke logon ki zindagi aasaan bana sake.'
+    ),
 ]
 
 TTS_EVAL_CER_THRESHOLD = 0.45

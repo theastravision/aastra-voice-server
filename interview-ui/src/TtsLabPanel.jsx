@@ -25,8 +25,8 @@ const SAMPLES = {
     'आप React और Python में कितना experience रखते हैं?',
   ],
   hinglish: [
-    'Welcome! मैं आज आपका technical interview लूँगी।',
-    'आप apne last project के बारे में थोड़ा बताइए।',
+    'Phir Aashish ne decide kiya, ki woh bada hokar engineer banega. Aur aisi technology banayega, jo gaon, shehar aur desh ke logon ki zindagi aasaan bana sake.',
+    'Welcome! Aaj main aapka technical interview loongi.',
   ],
 }
 

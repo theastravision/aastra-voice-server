@@ -40,6 +40,7 @@ class DemoTtsRequest(BaseModel):
     text: str
     language: str = 'en'
     voice_id: str | None = None
+    include_preprocessed: bool = False
 
 
 @router.get('/config')
@@ -166,7 +167,7 @@ async def demo_transcribe(
             filename=audio.filename or 'audio.webm',
             language=lang,
         )
-        text = postprocess_stt_transcript(result.get('text') or '')
+        text = postprocess_stt_transcript(result.get('text') or '', session_lang=lang)
     except AudioDecodeError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
@@ -189,10 +190,12 @@ async def demo_tts(body: DemoTtsRequest):
     if lang not in ('en', 'hi', 'hinglish'):
         raise HTTPException(status_code=400, detail='language must be en, hi, or hinglish')
     try:
+        from engines.tts_text_pipeline import prepare_text_for_tts
         from engines.voice_registry import resolve_voice_for_tts
         from tts_worker import synthesize_wav_bytes
 
         effective_voice = resolve_voice_for_tts(body.voice_id, reply_script=lang)
+        preprocessed = prepare_text_for_tts(text, reply_script=lang)  # type: ignore[arg-type]
         audio, mime = await synthesize_wav_bytes(
             text,
             reply_script=lang,
@@ -203,5 +206,17 @@ async def demo_tts(body: DemoTtsRequest):
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     if not audio:
         raise HTTPException(status_code=422, detail='TTS produced no audio')
-    return Response(content=audio, media_type=mime)
+    if body.include_preprocessed:
+        import base64
+
+        return {
+            'audio_base64': base64.b64encode(audio).decode('ascii'),
+            'mime': mime,
+            'preprocessed_text': preprocessed,
+        }
+    return Response(
+        content=audio,
+        media_type=mime,
+        headers={'X-TTS-Preprocessed-Text': preprocessed},
+    )
 

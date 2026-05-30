@@ -164,11 +164,17 @@ def _collapse_duplicate_halves(text: str) -> str:
     return text
 
 
-def postprocess_stt_transcript(text: str) -> str:
-    """Dedupe + name correction pipeline."""
+def postprocess_stt_transcript(text: str, *, session_lang: str | None = None) -> str:
+    """Dedupe + phonetic denorm + name correction pipeline."""
+    from engines.hinglish_phonetic import denormalize_phonetic_text
     from engines.stt_names import correct_names_in_transcript
 
     cleaned = dedupe_repeated_sentences((text or '').strip())
+    lang = (session_lang or '').lower().strip()
+    if lang in ('hi', 'hinglish'):
+        cleaned = denormalize_phonetic_text(cleaned, reply_script=lang)
+    elif lang not in ('en',):
+        cleaned = denormalize_phonetic_text(cleaned)
     return correct_names_in_transcript(cleaned)
 
 

@@ -10,8 +10,16 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from config import F5_HINGLISH_SCRIPT, HINGLISH_VOCAB_DIR, TTS_DEVANAGARI_SOURCE, TTS_HINGLISH_ROMAN, TTS_OUTPUT_SCRIPT
+from config import (
+    F5_HINGLISH_SCRIPT,
+    HINGLISH_VOCAB_DIR,
+    TTS_DEVANAGARI_SOURCE,
+    TTS_HINGLISH_PHONETIC_HYPHEN,
+    TTS_HINGLISH_ROMAN,
+    TTS_OUTPUT_SCRIPT,
+)
 from engines.hinglish_normalize import normalize_hinglish
+from engines.hinglish_phonetic import apply_phonetic_hyphens
 from engines.hinglish_vocab import hinglish_particles
 from engines.llm_script_contract import validate_assistant_script
 from engines.tts_pacing import add_speech_pauses
@@ -385,6 +393,12 @@ def normalize_mixed_script(text: str) -> str:
     return re.sub(r'\s+', ' ', merged).strip()
 
 
+def _apply_phonetic_if_enabled(text: str, *, reply_script: ReplyScript) -> str:
+    if reply_script in ('hi', 'hinglish') and TTS_HINGLISH_PHONETIC_HYPHEN:
+        return apply_phonetic_hyphens(text, reply_script=reply_script)
+    return text
+
+
 def prepare_text_for_tts(
     text: str,
     *,
@@ -421,8 +435,10 @@ def prepare_text_for_tts(
             (time.perf_counter() - started) * 1000,
             use_llm_fast and compliant,
         )
+        result = _apply_phonetic_if_enabled(result, reply_script=script)
         return add_speech_pauses(result, reply_script=script)
     result = normalize_hinglish(text)
+    result = _apply_phonetic_if_enabled(result, reply_script=script)
     return add_speech_pauses(result, reply_script=script)
 
 
@@ -441,11 +457,17 @@ def prepare_text_for_f5_tts(
 def preprocess_debug(text: str, *, reply_script: ReplyScript = 'hinglish') -> dict:
     """Return pipeline stages for CLI / eval tooling."""
     normalized = normalize_hinglish(text)
+    phonetic = apply_phonetic_hyphens(normalized, reply_script=reply_script)
+    from engines.hinglish_phonetic import denormalize_phonetic_text
+
+    stt_restored = denormalize_phonetic_text(phonetic, reply_script=reply_script)
     tokens = tokenize_for_tts(text, reply_script=reply_script)
     devanagari = to_devanagari_mixed(text, reply_script=reply_script)
     return {
         'original': text,
         'normalized': normalized,
+        'phonetic': phonetic,
+        'stt_restored': stt_restored,
         'devanagari': devanagari,
         'reply_script': reply_script,
         'tokens': [

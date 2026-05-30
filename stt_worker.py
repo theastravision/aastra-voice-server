@@ -191,7 +191,8 @@ class SttWorker(StreamingSTT):
                 self._reset_utterance()
                 return []
             transcribed = postprocess_stt_transcript(
-                (result.get('text') or '').strip()
+                (result.get('text') or '').strip(),
+                session_lang=self._language_hint,
             )
             duration_s = len(utterance_pcm) / _BYTES_PER_MS / 1000
             if duration_s > 20:
