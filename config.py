@@ -5,6 +5,10 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from core.ort_env import configure_ort_runtime
+
+configure_ort_runtime()
+
 _ROOT = Path(__file__).resolve().parent
 
 VOICE_API_KEY = os.environ.get('VOICE_API_KEY', '').strip()
@@ -261,3 +265,18 @@ HINGLISH_VOCAB_DIR = os.environ.get(
 ).strip()
 HINGLISH_SYNTH_MAX_ROWS = int(os.environ.get('HINGLISH_SYNTH_MAX_ROWS', '5000'))
 HINGLISH_SYNTH_VOICE_ID = os.environ.get('HINGLISH_SYNTH_VOICE_ID', 'astra').strip()
+
+
+def effective_whisper_vad_filter() -> bool:
+    """
+    Whisper's built-in Silero ONNX VAD is redundant when SileroWhisperSTT already gates PCM
+    (STT_PROVIDER whisper / silero_whisper) and triggers ORT DRM discovery warnings.
+    Set WHISPER_VAD_FORCE=true to keep ONNX VAD on those paths anyway.
+    """
+    if not WHISPER_VAD_FILTER:
+        return False
+    if os.environ.get('WHISPER_VAD_FORCE', '').lower() in ('1', 'true', 'yes'):
+        return True
+    if STT_PROVIDER in ('whisper', 'silero_whisper'):
+        return False
+    return True

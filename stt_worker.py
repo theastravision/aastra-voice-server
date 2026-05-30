@@ -19,7 +19,7 @@ from config import (
     WHISPER_DEVICE,
     WHISPER_MODEL,
     WHISPER_MODEL_PATH,
-    WHISPER_VAD_FILTER,
+    effective_whisper_vad_filter,
 )
 from engines.audio_normalize import normalize_pcm_s16le
 from engines.lang_detect import resolve_whisper_language
@@ -91,7 +91,10 @@ class FasterWhisperInferenceManager:
             wav_path = tmp.name
         try:
             lang = resolve_whisper_language(language_hint)
-            kwargs = {**_build_transcribe_kwargs(lang), 'vad_filter': WHISPER_VAD_FILTER, 'vad_parameters': dict(min_silence_duration_ms=STT_VAD_SILENCE_MS)}
+            use_vad = effective_whisper_vad_filter()
+            kwargs = {**_build_transcribe_kwargs(lang), 'vad_filter': use_vad}
+            if use_vad:
+                kwargs['vad_parameters'] = dict(min_silence_duration_ms=STT_VAD_SILENCE_MS)
             segments, info = self._model.transcribe(wav_path, **kwargs)
             text = ''.join(seg.text for seg in segments).strip()
             detected = getattr(info, 'language', None) or lang

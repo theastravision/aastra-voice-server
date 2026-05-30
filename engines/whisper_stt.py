@@ -13,7 +13,7 @@ from config import (
     WHISPER_DEVICE,
     WHISPER_MODEL,
     WHISPER_MODEL_PATH,
-    WHISPER_VAD_FILTER,
+    effective_whisper_vad_filter,
 )
 from engines.audio_convert import bytes_to_wav_path
 from engines.lang_detect import (
@@ -95,10 +95,10 @@ def _build_transcribe_kwargs(lang: str | None) -> dict:
         beam = max(WHISPER_BEAM_SIZE, 5)
     kwargs: dict = {
         'beam_size': beam,
-        'vad_filter': WHISPER_VAD_FILTER,
+        'vad_filter': effective_whisper_vad_filter(),
         'condition_on_previous_text': False,
     }
-    if WHISPER_VAD_FILTER:
+    if effective_whisper_vad_filter():
         kwargs['vad_parameters'] = _VAD_PARAMS
     if lang:
         kwargs['language'] = lang

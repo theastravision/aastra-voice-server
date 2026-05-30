@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 import tempfile
 from collections.abc import Iterator
 from threading import Lock
@@ -19,8 +18,6 @@ logger = logging.getLogger(__name__)
 
 _manager: MeloTTSManager | None = None
 _manager_lock = Lock()
-
-_SENTENCE_SPLIT = re.compile(r'(?<=[.,!?।])\s+')
 
 
 def get_manager() -> MeloTTSManager:
@@ -50,7 +47,7 @@ def warmup() -> None:
 
 
 class MeloTTSManager:
-    """Wrapper for MeloTTS with sentence-level chunk streaming."""
+    """Wrapper for MeloTTS — one synthesis unit in, one PCM blob out."""
 
     def __init__(self) -> None:
         self._models: dict[str, object] = {}
@@ -89,14 +86,12 @@ class MeloTTSManager:
         self._active_voice = voice_id
 
     def synthesize_stream_sync(self, text: str, reply_script: str = 'en') -> Iterator[tuple[bytes, int]]:
+        del reply_script
         cleaned = text.strip()
         if not cleaned:
             return
 
         lang_code = 'EN'
-        chunks = _split_sentences(cleaned)
-        if not chunks:
-            chunks = [cleaned]
 
         try:
             model = self._get_or_load_model(lang_code)
@@ -107,10 +102,9 @@ class MeloTTSManager:
             if spk_id is None:
                 spk_id = list(speaker_ids.values())[0]
 
-            for sentence in chunks:
-                pcm, sr = self._synthesize_sentence(model, spk_id, sentence)
-                if pcm:
-                    yield pcm, sr
+            pcm, sr = self._synthesize_sentence(model, spk_id, cleaned)
+            if pcm:
+                yield pcm, sr
         except Exception:
             logger.exception('MeloTTS synthesis failed')
             raise
@@ -125,8 +119,3 @@ class MeloTTSManager:
             return pcm_bytes, int(samplerate)
         finally:
             os.remove(tmp_path)
-
-
-def _split_sentences(text: str) -> list[str]:
-    parts = _SENTENCE_SPLIT.split(text.strip())
-    return [p.strip() for p in parts if p.strip()]

@@ -703,7 +703,11 @@ class InterviewSession:
         cleaned = (phrase or '').strip()
         if not cleaned or not is_speakable_text(cleaned):
             return
+        melo_phrase = getattr(self._tts, '_backend', '') == 'melotts'
         try:
+            if melo_phrase:
+                await self._stream_melo_phrase(cleaned)
+                return
             async for chunk in self._tts.synthesize_stream(cleaned):
                 if self._closed or self._duplex.cancel_generation.is_set():
                     break
@@ -723,6 +727,26 @@ class InterviewSession:
             logger.exception('TTS phrase failed')
             if not self._closed:
                 await self._send_json(_evt('error', message=f'TTS failed: {exc}'))
+
+    async def _stream_melo_phrase(self, phrase: str) -> None:
+        """MeloTTS: synthesize full phrase, then send one PCM blob (sequential playback)."""
+        pcm_buf = bytearray()
+        sample_rate = 24000
+        async for chunk in self._tts.synthesize_stream(phrase):
+            if self._closed or self._duplex.cancel_generation.is_set():
+                break
+            sample_rate = chunk.sample_rate or sample_rate
+            pcm = ensure_pcm_s16le_bytes(chunk.pcm_s16le)
+            if pcm:
+                pcm_buf.extend(pcm)
+        if not pcm_buf or self._closed:
+            return
+        if not self._turn_audio_config_sent:
+            await self._send_json(
+                _evt('audio_config', sample_rate=sample_rate, format='pcm_s16le')
+            )
+            self._turn_audio_config_sent = True
+        await self._send_binary(bytes(pcm_buf))
 
 
 def _evt(event_type: str, **fields) -> str:

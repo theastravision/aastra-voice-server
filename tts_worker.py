@@ -75,6 +75,17 @@ class TtsWorker:
 
         def _producer() -> None:
             try:
+                text = cleaned
+                if backend == 'melotts':
+                    from engines.tts_text_pipeline import prepare_text_for_tts
+
+                    text = prepare_text_for_tts(
+                        cleaned,
+                        reply_script=reply_script,  # type: ignore[arg-type]
+                        engine='melotts',
+                    )
+                    if not text.strip():
+                        return
                 if backend == 'xtts':
                     from engines.xtts_engine import get_manager as get_xtts
 
@@ -86,7 +97,7 @@ class TtsWorker:
 
                     mgr = get_melo()
                     mgr.set_active_voice(voice_id)
-                    stream = mgr.synthesize_stream_sync(cleaned, reply_script=reply_script)
+                    stream = mgr.synthesize_stream_sync(text, reply_script=reply_script)
                 else:
                     from engines.f5_tts_engine import get_manager
 
