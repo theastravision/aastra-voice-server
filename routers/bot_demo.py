@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from config import (
@@ -33,6 +34,12 @@ def _ensure_demo_enabled() -> None:
 class StartRequest(BaseModel):
     candidate_name: str = 'Aashish'
     language: str = 'en'
+
+
+class DemoTtsRequest(BaseModel):
+    text: str
+    language: str = 'en'
+    voice_id: str | None = None
 
 
 @router.get('/config')
@@ -132,4 +139,30 @@ async def demo_edge_voices():
         'with_audio': sum(1 for e in entries if e.get('has_audio')),
         'samples_dir': 'data/voice-samples',
     }
+
+
+@router.post('/tts')
+async def demo_tts(body: DemoTtsRequest):
+    """Generate WAV audio for English, Hindi, or Hinglish (public demo)."""
+    _ensure_demo_enabled()
+    text = (body.text or '').strip()
+    if not text:
+        raise HTTPException(status_code=400, detail='text required')
+    lang = (body.language or 'en').lower().strip()
+    if lang not in ('en', 'hi', 'hinglish'):
+        raise HTTPException(status_code=400, detail='language must be en, hi, or hinglish')
+    try:
+        from tts_worker import synthesize_wav_bytes
+
+        audio, mime = await synthesize_wav_bytes(
+            text,
+            reply_script=lang,
+            voice_id=body.voice_id,
+        )
+    except Exception as exc:
+        logger.exception('demo TTS failed language=%s', lang)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    if not audio:
+        raise HTTPException(status_code=422, detail='TTS produced no audio')
+    return Response(content=audio, media_type=mime)
 

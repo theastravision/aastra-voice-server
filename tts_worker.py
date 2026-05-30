@@ -132,3 +132,32 @@ class TtsWorker:
     async def stream_cached(self, clip: CachedInterjection) -> AsyncIterator[TtsAudioChunk]:
         if clip.pcm_s16le:
             yield TtsAudioChunk(pcm_s16le=clip.pcm_s16le, sample_rate=clip.sample_rate)
+
+
+async def synthesize_wav_bytes(
+    text: str,
+    *,
+    reply_script: str = 'en',
+    voice_id: str | None = None,
+) -> tuple[bytes, str]:
+    """Synthesize full utterance to WAV using the active TTS backend for reply_script."""
+    from engines.lang_detect import pick_tts_route_for_session
+    from engines.tts_utils import pcm_s16le_to_wav
+    from engines.voice_registry import resolve_voice_for_language
+
+    script = reply_script if reply_script in ('en', 'hi', 'hinglish') else 'en'
+    route = pick_tts_route_for_session(script, script)  # type: ignore[arg-type]
+    vid = voice_id or resolve_voice_for_language(route)
+    worker = TtsWorker()
+    await worker.start(language_hint=route, voice_id=vid)
+
+    pcm_buf = bytearray()
+    sample_rate = 24000
+    async for chunk in worker.synthesize_stream(text):
+        if chunk.pcm_s16le:
+            pcm_buf.extend(chunk.pcm_s16le)
+            sample_rate = chunk.sample_rate or sample_rate
+
+    if not pcm_buf:
+        return b'', 'audio/wav'
+    return pcm_s16le_to_wav(bytes(pcm_buf), sample_rate), 'audio/wav'

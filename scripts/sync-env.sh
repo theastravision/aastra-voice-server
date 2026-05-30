@@ -93,8 +93,8 @@ sync_pipeline_env() {
 
   # ── TTS: F5 English + Hinglish reference clips (no duplicate F5_REF_AUDIO) ─
   upsert_env_key TTS_PROVIDER f5
-  upsert_env_key TTS_HINGLISH_ENGINE f5_devanagari
-  upsert_env_key TTS_OUTPUT_SCRIPT devanagari
+  upsert_env_key TTS_HINGLISH_ENGINE melotts
+  upsert_env_key TTS_OUTPUT_SCRIPT roman
   upsert_env_key TTS_LLM_SCRIPT_STRICT true
   upsert_env_key MELOTTS_DEVICE cuda
   upsert_env_key MELOTTS_SPEED 1.0
@@ -106,7 +106,7 @@ sync_pipeline_env() {
   upsert_env_key F5_CROSS_FADE_DURATION 0.15
   upsert_env_key F5_DTYPE float16
   upsert_env_key F5_VOCODER vocos
-  upsert_env_key F5_HINGLISH_SCRIPT devanagari
+  upsert_env_key F5_HINGLISH_SCRIPT roman
   upsert_env_key F5_REF_AUDIO_EN assets/voices/astra_ref.wav
   upsert_env_key F5_REF_TEXT_EN "Hello! My name is Astra. Please keep sharing your screen; you may check it. Whenever you are ready, we can begin the interview."
   upsert_env_key F5_REF_AUDIO_HINGLISH assets/voices/astra_ref_hinglish.wav

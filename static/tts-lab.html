@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Astra — TTS Lab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0a0e17;
+      --card: #121a2b;
+      --accent: #6366f1;
+      --accent-hover: #818cf8;
+      --text: #e8ecf4;
+      --muted: #8b95a8;
+      --success: #34d399;
+      --danger: #f87171;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: 'DM Sans', system-ui, sans-serif;
+      background: radial-gradient(ellipse 80% 60% at 50% -10%, #1e2a4a 0%, var(--bg) 55%);
+      color: var(--text);
+      padding: 1rem;
+    }
+    .wrap { max-width: 720px; margin: 0 auto; }
+    .top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+    .top h1 { margin: 0; font-size: 1.35rem; font-weight: 700; }
+    .nav { display: flex; gap: 1rem; flex-wrap: wrap; }
+    .nav a {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+    .nav a:hover { color: var(--accent-hover); }
+    .card {
+      background: var(--card);
+      border-radius: 20px;
+      border: 1px solid rgba(255,255,255,0.06);
+      box-shadow: 0 24px 80px rgba(0,0,0,0.35);
+      overflow: hidden;
+    }
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .tab {
+      flex: 1;
+      padding: 0.85rem 1rem;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-family: inherit;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .tab.active {
+      color: var(--text);
+      background: rgba(99,102,241,0.12);
+      box-shadow: inset 0 -2px 0 var(--accent);
+    }
+    .body { padding: 1.25rem; }
+    label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 0.4rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    textarea {
+      width: 100%;
+      min-height: 140px;
+      resize: vertical;
+      font-family: inherit;
+      font-size: 1rem;
+      line-height: 1.5;
+      padding: 0.85rem 1rem;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(0,0,0,0.25);
+      color: var(--text);
+    }
+    textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(99,102,241,0.2);
+    }
+    .row {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      margin-top: 1rem;
+    }
+    select {
+      flex: 1;
+      min-width: 160px;
+      font-family: inherit;
+      font-size: 0.9rem;
+      padding: 0.6rem 0.75rem;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(0,0,0,0.25);
+      color: var(--text);
+    }
+    .btn {
+      font-family: inherit;
+      font-size: 0.95rem;
+      font-weight: 700;
+      padding: 0.65rem 1.4rem;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: transform 0.1s, opacity 0.15s;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), #4f46e5);
+      color: white;
+    }
+    .btn-primary:hover:not(:disabled) { background: linear-gradient(135deg, var(--accent-hover), #6366f1); }
+    .btn-secondary {
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
+    }
+    .status {
+      margin-top: 1rem;
+      font-size: 0.9rem;
+      min-height: 1.4em;
+      color: var(--muted);
+    }
+    .status.error { color: var(--danger); }
+    .status.ok { color: var(--success); }
+    .player-wrap {
+      margin-top: 1.25rem;
+      padding: 1rem;
+      border-radius: 12px;
+      background: rgba(0,0,0,0.2);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .player-wrap audio { width: 100%; margin-top: 0.5rem; }
+    .hint {
+      margin-top: 1rem;
+      font-size: 0.82rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .samples {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-top: 0.75rem;
+    }
+    .chip {
+      font-family: inherit;
+      font-size: 0.78rem;
+      padding: 0.35rem 0.65rem;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.04);
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .chip:hover { border-color: var(--accent); color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <h1>TTS Lab</h1>
+      <nav class="nav">
+        <a href="/bot">Interview</a>
+        <a href="/bot/names">Name samples</a>
+      </nav>
+    </div>
+
+    <div class="card">
+      <div class="tabs" role="tablist">
+        <button type="button" class="tab active" data-lang="en" role="tab">English</button>
+        <button type="button" class="tab" data-lang="hi" role="tab">Hindi</button>
+        <button type="button" class="tab" data-lang="hinglish" role="tab">Hinglish</button>
+      </div>
+
+      <div class="body">
+        <label for="textInput">Text to speak</label>
+        <textarea id="textInput" spellcheck="false" placeholder="Enter text…"></textarea>
+
+        <div class="samples" id="sampleChips"></div>
+
+        <div class="row">
+          <div style="flex:1; min-width:180px">
+            <label for="voiceSelect">Voice</label>
+            <select id="voiceSelect" aria-label="Voice">
+              <option value="">Auto (by language)</option>
+            </select>
+          </div>
+          <button type="button" id="btnGenerate" class="btn btn-primary">Generate &amp; play</button>
+          <button type="button" id="btnStop" class="btn btn-secondary" disabled>Stop</button>
+        </div>
+
+        <p id="status" class="status">Ready — type text and click Generate.</p>
+
+        <div class="player-wrap" id="playerWrap" hidden>
+          <label>Playback</label>
+          <audio id="player" controls></audio>
+        </div>
+
+        <p class="hint">
+          Uses the same TTS engine as the interview (F5 Devanagari / Melo per <code>TTS_HINGLISH_ENGINE</code>).
+          Hindi &amp; Hinglish work best with Devanagari script for Hindi words.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API = window.location.origin;
+    const SAMPLES = {
+      en: [
+        'Hello! My name is Astra. I will conduct your technical interview today.',
+        'Tell me about your experience with React and Node.js.',
+      ],
+      hi: [
+        'नमस्ते, मैं Astra हूँ। आप अपने बारे में थोड़ा बताइए।',
+        'आप React और Python में कितना experience रखते हैं?',
+      ],
+      hinglish: [
+        'Welcome! मैं आज आपका technical interview लूँगी।',
+        'आप apne last project के बारे में थोड़ा बताइए।',
+      ],
+    };
+
+    let currentLang = 'en';
+    let audioUrl = null;
+
+    const tabs = document.querySelectorAll('.tab');
+    const textInput = document.getElementById('textInput');
+    const voiceSelect = document.getElementById('voiceSelect');
+    const btnGenerate = document.getElementById('btnGenerate');
+    const btnStop = document.getElementById('btnStop');
+    const statusEl = document.getElementById('status');
+    const player = document.getElementById('player');
+    const playerWrap = document.getElementById('playerWrap');
+    const sampleChips = document.getElementById('sampleChips');
+
+    function setStatus(msg, kind) {
+      statusEl.textContent = msg;
+      statusEl.className = 'status' + (kind ? ' ' + kind : '');
+    }
+
+    function renderSamples() {
+      sampleChips.innerHTML = '';
+      (SAMPLES[currentLang] || []).forEach((text) => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'chip';
+        chip.textContent = text.length > 48 ? text.slice(0, 48) + '…' : text;
+        chip.title = text;
+        chip.addEventListener('click', () => { textInput.value = text; });
+        sampleChips.appendChild(chip);
+      });
+    }
+
+    function switchLang(lang) {
+      currentLang = lang;
+      tabs.forEach((t) => t.classList.toggle('active', t.dataset.lang === lang));
+      if (!textInput.value.trim() && SAMPLES[lang]?.[0]) {
+        textInput.value = SAMPLES[lang][0];
+      }
+      renderSamples();
+    }
+
+    tabs.forEach((tab) => {
+      tab.addEventListener('click', () => switchLang(tab.dataset.lang));
+    });
+
+    function revokeAudioUrl() {
+      if (audioUrl) {
+        URL.revokeObjectURL(audioUrl);
+        audioUrl = null;
+      }
+    }
+
+    btnStop.addEventListener('click', () => {
+      player.pause();
+      player.currentTime = 0;
+      btnStop.disabled = true;
+    });
+
+    async function loadVoices() {
+      try {
+        const res = await fetch(`${API}/api/v1/demo/config`);
+        if (!res.ok) return;
+        const data = await res.json();
+        (data.voices || []).forEach((v) => {
+          const opt = document.createElement('option');
+          opt.value = v.id;
+          opt.textContent = `${v.display_name} (${v.language})`;
+          voiceSelect.appendChild(opt);
+        });
+      } catch (_) { /* optional */ }
+    }
+
+    btnGenerate.addEventListener('click', async () => {
+      const text = textInput.value.trim();
+      if (!text) {
+        setStatus('Enter some text first.', 'error');
+        return;
+      }
+
+      btnGenerate.disabled = true;
+      btnStop.disabled = true;
+      setStatus('Generating…');
+      revokeAudioUrl();
+      player.removeAttribute('src');
+      playerWrap.hidden = true;
+
+      try {
+        const body = {
+          text,
+          language: currentLang,
+          voice_id: voiceSelect.value || null,
+        };
+        const res = await fetch(`${API}/api/v1/demo/tts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || res.statusText || 'TTS failed');
+        }
+        const blob = await res.blob();
+        audioUrl = URL.createObjectURL(blob);
+        player.src = audioUrl;
+        playerWrap.hidden = false;
+        setStatus('Playing…', 'ok');
+        btnStop.disabled = false;
+        await player.play();
+        setStatus('Done — use the player to replay.', 'ok');
+      } catch (err) {
+        setStatus(err.message || 'Generation failed', 'error');
+      } finally {
+        btnGenerate.disabled = false;
+      }
+    });
+
+    player.addEventListener('ended', () => { btnStop.disabled = true; });
+
+    switchLang('en');
+    loadVoices();
+  </script>
+</body>
+</html>

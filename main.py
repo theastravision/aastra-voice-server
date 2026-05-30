@@ -122,6 +122,20 @@ def bot_name_samples_page():
     return FileResponse(path, media_type='text/html')
 
 
+@app.get('/bot/tts')
+def bot_tts_lab_page():
+    from config import ALLOW_PUBLIC_DEMO
+    from fastapi import HTTPException
+    from fastapi.responses import FileResponse
+
+    if not ALLOW_PUBLIC_DEMO:
+        raise HTTPException(status_code=403, detail='Demo disabled')
+    path = Path(__file__).resolve().parent / 'static' / 'tts-lab.html'
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail='TTS lab UI missing')
+    return FileResponse(path, media_type='text/html')
+
+
 @app.get('/interview', include_in_schema=False)
 def interview_ui_redirect():
     """Redirect to trailing slash so Vite assets resolve under /interview/."""

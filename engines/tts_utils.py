@@ -85,3 +85,28 @@ def wav_to_mp3(wav_bytes: bytes) -> bytes:
     out = io.BytesIO()
     segment.export(out, format='mp3', bitrate='128k')
     return out.getvalue()
+
+
+def pcm_s16le_to_wav(pcm: bytes, sample_rate: int) -> bytes:
+    """Wrap raw mono PCM s16le in a WAV container."""
+    import struct
+
+    data = pcm or b''
+    n = len(data)
+    header = struct.pack(
+        '<4sI4s4sIHHIIHH4sI',
+        b'RIFF',
+        36 + n,
+        b'WAVE',
+        b'fmt ',
+        16,
+        1,
+        1,
+        sample_rate,
+        sample_rate * 2,
+        2,
+        16,
+        b'data',
+        n,
+    )
+    return header + data
