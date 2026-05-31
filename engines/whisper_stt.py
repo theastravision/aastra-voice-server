@@ -33,18 +33,9 @@ _VAD_PARAMS = {
 
 
 def _ensure_ld_library_path() -> None:
-    try:
-        import nvidia.cublas.lib as cublas_lib
-        import nvidia.cudnn.lib as cudnn_lib
+    from core.cuda_runtime import configure_cuda_runtime
 
-        cublas_dir = os.path.dirname(cublas_lib.__file__)
-        cudnn_dir = os.path.dirname(cudnn_lib.__file__)
-        existing = os.environ.get('LD_LIBRARY_PATH', '')
-        merged = f'{cublas_dir}:{cudnn_dir}'
-        if merged not in existing:
-            os.environ['LD_LIBRARY_PATH'] = f'{merged}:{existing}' if existing else merged
-    except ImportError:
-        pass
+    configure_cuda_runtime()
 
 
 def get_model():

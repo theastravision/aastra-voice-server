@@ -27,13 +27,7 @@ fi
 source "$ROOT/scripts/load-env.sh"
 load_env_file "$ROOT/.env"
 
-export LD_LIBRARY_PATH="$(python -c 'import os
-try:
-    import nvidia.cublas.lib as c
-    import nvidia.cudnn.lib as d
-    print(os.path.dirname(c.__file__) + ":" + os.path.dirname(d.__file__))
-except ImportError:
-    print(os.environ.get("LD_LIBRARY_PATH", ""))')"
+export LD_LIBRARY_PATH="$(python -c 'from core.cuda_runtime import cuda_library_path_export; print(cuda_library_path_export())')"
 
 if [[ -f "$VOICE_PID_FILE" ]] && kill -0 "$(cat "$VOICE_PID_FILE")" 2>/dev/null; then
   echo "Voice server already running (pid $(cat "$VOICE_PID_FILE")). Run: bash scripts/stop-local-dev.sh"

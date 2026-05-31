@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from core.cuda_runtime import configure_cuda_runtime
+
+configure_cuda_runtime()
+
 import logging
 import threading
 from collections.abc import Iterator

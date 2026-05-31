@@ -131,13 +131,7 @@ install_all() {
   fi
   patch_env_tts
 
-  export LD_LIBRARY_PATH="$(python -c 'import os
-try:
-    import nvidia.cublas.lib as c
-    import nvidia.cudnn.lib as d
-    print(os.path.dirname(c.__file__) + ":" + os.path.dirname(d.__file__))
-except ImportError:
-    print(os.environ.get("LD_LIBRARY_PATH", ""))')"
+  export LD_LIBRARY_PATH="$(python -c 'from core.cuda_runtime import cuda_library_path_export; print(cuda_library_path_export())')"
 
   echo "==> Download / warm models"
   bash "$ROOT/scripts/download-models.sh"

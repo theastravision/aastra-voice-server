@@ -5,9 +5,11 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from core.cuda_runtime import configure_cuda_runtime
 from core.ort_env import configure_ort_runtime
 
 configure_ort_runtime()
+configure_cuda_runtime()
 
 _ROOT = Path(__file__).resolve().parent
 

@@ -62,6 +62,7 @@ Hindi, Bengali, Marathi, Telugu, Kannada, Bhojpuri, Magahi, Chhattisgarhi, Maith
 |-------|-----|
 | `svara_ready: false`, vendor missing | Run `bash scripts/install-svara-tts.sh` |
 | CUDA OOM on warmup | Lower `SVARA_VLLM_GPU_MEMORY_UTILIZATION` to `0.40` |
+| `libnvrtc-builtins.so.13.0` / F5 warmup failed | `pip install nvidia-cuda-nvrtc-cu12 nvidia-cuda-runtime-cu12` then restart |
 | Indic still sounds like F5 clone | Confirm `TTS_INDIC_ENGINE=svara` and restart server |
 | English changed | English always uses F5; check `reply_script=en` in logs |
 

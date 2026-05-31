@@ -18,6 +18,7 @@ pip install --upgrade pip wheel setuptools
 pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu124 || \
   pip install torch torchaudio
 pip install -r "$ROOT/requirements.txt"
+pip install nvidia-cuda-nvrtc-cu12 nvidia-cuda-runtime-cu12
 
 echo "==> Setting up Astra reference voice clip (not F5 mother-nature demo)"
 pip install edge-tts
