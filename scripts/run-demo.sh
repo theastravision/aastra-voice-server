@@ -26,12 +26,22 @@ PORT="${PORT:-8000}"
 TTS_INDIC_ENGINE="${TTS_INDIC_ENGINE:-svara}"
 if [[ "$TTS_INDIC_ENGINE" == "svara" ]]; then
   echo "Starting svara sidecar (Indic TTS)..."
-  bash "$ROOT/scripts/run-svara-sidecar.sh" --background
-  bash "$ROOT/scripts/wait-svara-health.sh"
+  if ! bash "$ROOT/scripts/run-svara-sidecar.sh" --background; then
+    echo "WARN: svara sidecar did not start — Indic TTS may fall back to F5"
+    echo "      Fix: bash scripts/install-svara-tts.sh && tail -f svara-sidecar.log"
+  elif ! bash "$ROOT/scripts/wait-svara-health.sh"; then
+    echo "WARN: svara sidecar not healthy yet — starting voice server anyway"
+    echo "      Check: tail -f $ROOT/svara-sidecar.log"
+  fi
 fi
 
-echo "Starting voice server on http://${HOST}:${PORT}"
+UVICORN_HOST="$HOST"
+if [[ "$UVICORN_HOST" == "*" ]]; then
+  UVICORN_HOST="0.0.0.0"
+fi
+
+echo "Starting voice server on http://${UVICORN_HOST}:${PORT}"
 echo "  Health:  http://127.0.0.1:${PORT}/health"
 echo "  Docs:    http://127.0.0.1:${PORT}/docs"
 echo "  Talk:    POST /api/v1/voice-turn (multipart audio)"
-exec python -m uvicorn main:app --host "$HOST" --port "$PORT"
+exec python -m uvicorn main:app --host "$UVICORN_HOST" --port "$PORT"

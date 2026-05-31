@@ -191,9 +191,6 @@ repair_f5_venv_if_needed() {
     bash "$ROOT/scripts/install-f5-tts.sh" || true
   }
 }
-  [[ -d "$ROOT/.venv" ]] || return 0
-  bash "$ROOT/scripts/repair-f5-venv.sh" --check-only 2>/dev/null && return 1 || return 0
-}
 
 needs_install() {
   if $DO_INSTALL; then
@@ -331,6 +328,19 @@ start_server() {
   nohup bash "$ROOT/scripts/run-demo.sh" >>"$LOG" 2>&1 &
   echo $! >"$PID_FILE"
   echo "PID $(cat "$PID_FILE") — log: $LOG"
+  sleep 2
+  if ! kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+    echo "ERROR: voice server exited immediately — last log lines:"
+    tail -30 "$LOG" 2>/dev/null || true
+    rm -f "$PID_FILE"
+    return 1
+  fi
+  if command -v ss >/dev/null 2>&1; then
+    if ! ss -tlnp 2>/dev/null | grep -q ":${PORT} "; then
+      echo "WARN: nothing listening on port ${PORT} yet (svara may still be loading)"
+      echo "      tail -f $LOG"
+    fi
+  fi
 }
 
 wait_for_health() {
