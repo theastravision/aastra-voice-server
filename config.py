@@ -126,16 +126,10 @@ F5_DEVANAGARI_NO_SPLIT_MAX_CHARS = int(
     os.environ.get('F5_DEVANAGARI_NO_SPLIT_MAX_CHARS', '90')
 )
 
-# svara-TTS (embedded vLLM) for Indic languages — English stays on F5
-_SVARA_VENDOR_DIR = _ROOT / 'vendor' / 'svara-tts-inference'
-if _SVARA_VENDOR_DIR.is_dir():
-    import sys
-
-    vendor_path = str(_SVARA_VENDOR_DIR)
-    if vendor_path not in sys.path:
-        sys.path.insert(0, vendor_path)
-
+# svara-TTS sidecar (Kenpath API in .venv-svara) — English stays on F5
 TTS_INDIC_ENGINE = os.environ.get('TTS_INDIC_ENGINE', 'svara').strip().lower()
+SVARA_TTS_URL = os.environ.get('SVARA_TTS_URL', 'http://127.0.0.1:8080').strip()
+SVARA_TTS_TIMEOUT_SEC = float(os.environ.get('SVARA_TTS_TIMEOUT_SEC', '120'))
 SVARA_MODEL = os.environ.get('SVARA_MODEL', 'kenpath/svara-tts-v1').strip()
 SVARA_VLLM_GPU_MEMORY_UTILIZATION = float(
     os.environ.get('SVARA_VLLM_GPU_MEMORY_UTILIZATION', '0.50')

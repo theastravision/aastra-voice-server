@@ -23,6 +23,13 @@ export LD_LIBRARY_PATH="$(python -c 'from core.cuda_runtime import cuda_library_
 HOST="${HOST:-*}"
 PORT="${PORT:-8000}"
 
+TTS_INDIC_ENGINE="${TTS_INDIC_ENGINE:-svara}"
+if [[ "$TTS_INDIC_ENGINE" == "svara" ]]; then
+  echo "Starting svara sidecar (Indic TTS)..."
+  bash "$ROOT/scripts/run-svara-sidecar.sh" --background
+  bash "$ROOT/scripts/wait-svara-health.sh"
+fi
+
 echo "Starting voice server on http://${HOST}:${PORT}"
 echo "  Health:  http://127.0.0.1:${PORT}/health"
 echo "  Docs:    http://127.0.0.1:${PORT}/docs"

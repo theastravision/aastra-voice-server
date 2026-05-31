@@ -91,7 +91,9 @@ def run_warmup_background() -> None:
                         svara_ok = True
                     else:
                         msg = (
-                            'svara not installed (bash scripts/install-svara-tts.sh)'
+                            f'svara sidecar unreachable at configured URL '
+                            f'(bash scripts/install-svara-tts.sh && '
+                            f'bash scripts/run-svara-sidecar.sh)'
                         )
                         logger.warning('TTS_INDIC_ENGINE=svara but %s', msg)
                         errors.append(msg)

@@ -1,0 +1,17 @@
+# svara-TTS sidecar only — install into .venv-svara via scripts/install-svara-tts.sh
+# Do NOT pip install this file into the main .venv (conflicts with F5 / cu124 torch).
+langcodes
+language_data
+snac
+torch
+torchaudio
+transformers>=4.30.0
+vllm>=0.17.0
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+python-dotenv
+flashinfer-python>=0.2.3
+hf-transfer
+pyyaml
+torchcodec

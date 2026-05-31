@@ -37,3 +37,7 @@ print("OK: f5-tts importable")
 PY
 
 echo "Done. Set TTS_PROVIDER=f5 in .env and restart the server."
+echo ""
+echo "NOTE: svara-TTS uses a separate venv (.venv-svara). Never pip install"
+echo "      requirements-svara-sidecar.txt into this .venv — it conflicts with F5 torch."
+echo "      Run: bash scripts/install-svara-tts.sh"

@@ -8,6 +8,8 @@ PID_FILE="$ROOT/voice-server.pid"
 NGROK_PID_FILE="$ROOT/ngrok.pid"
 PORT="${PORT:-8000}"
 
+bash "$ROOT/scripts/stop-svara-sidecar.sh" 2>/dev/null || true
+
 if [[ -f "$PID_FILE" ]]; then
   OLD_PID="$(cat "$PID_FILE")"
   if kill -0 "$OLD_PID" 2>/dev/null; then

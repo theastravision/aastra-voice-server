@@ -1,22 +1,18 @@
-"""Embedded svara-TTS inference for Indic languages (vLLM + SNAC)."""
+"""HTTP client for svara-TTS sidecar (Kenpath API in separate .venv-svara)."""
 
 from __future__ import annotations
-
-from core.cuda_runtime import configure_cuda_runtime
-
-configure_cuda_runtime()
 
 import logging
 import threading
 from collections.abc import Iterator
 
+import httpx
+
 from config import (
     SVARA_MODEL,
-    SVARA_SNAC_DEVICE,
-    SVARA_VLLM_GPU_MEMORY_UTILIZATION,
-    SVARA_VLLM_MAX_MODEL_LEN,
+    SVARA_TTS_TIMEOUT_SEC,
+    SVARA_TTS_URL,
     TTS_OUTPUT_FORMAT,
-    _SVARA_VENDOR_DIR,
     resolve_svara_speaker,
 )
 from engines.tts_svara_pipeline import prepare_text_for_svara
@@ -26,30 +22,46 @@ logger = logging.getLogger(__name__)
 
 _manager: 'SvaraTtsManager | None' = None
 _manager_lock = threading.Lock()
-_import_error: str | None = None
+_availability_error: str | None = None
 _warmup_error: str | None = None
 _ready = False
+_sidecar_ok = False
 SAMPLE_RATE = 24000
 
 
-def svara_available() -> bool:
-    global _import_error
-    if _import_error is not None:
-        return False
-    if not _SVARA_VENDOR_DIR.is_dir():
-        _import_error = (
-            f'svara vendor missing: {_SVARA_VENDOR_DIR} (run scripts/install-svara-tts.sh)'
-        )
-        return False
-    try:
-        import vllm  # noqa: F401
-        from tts_engine.orchestrator import SvaraTTSOrchestrator  # noqa: F401
-        from tts_engine.transports import VLLMEmbeddedTransport  # noqa: F401
+def _base_url() -> str:
+    return SVARA_TTS_URL.rstrip('/')
 
-        return True
-    except ImportError as exc:
-        _import_error = str(exc)
+
+def _health_url() -> str:
+    return f'{_base_url()}/health'
+
+
+def _speech_url() -> str:
+    return f'{_base_url()}/v1/audio/speech'
+
+
+def _check_sidecar_health(*, timeout: float = 5.0) -> bool:
+    global _availability_error, _sidecar_ok
+    try:
+        response = httpx.get(_health_url(), timeout=timeout)
+        if response.status_code == 200:
+            _sidecar_ok = True
+            _availability_error = None
+            return True
+        _availability_error = f'svara health returned HTTP {response.status_code}'
+        _sidecar_ok = False
         return False
+    except Exception as exc:
+        _availability_error = str(exc)
+        _sidecar_ok = False
+        return False
+
+
+def svara_available() -> bool:
+    if _sidecar_ok:
+        return True
+    return _check_sidecar_health(timeout=2.0)
 
 
 def svara_ready() -> bool:
@@ -60,39 +72,18 @@ def svara_error() -> str | None:
     if _warmup_error:
         return _warmup_error
     if not svara_available():
-        return _import_error
+        return _availability_error or f'svara sidecar unreachable at {SVARA_TTS_URL}'
     return None
 
 
 class SvaraTtsManager:
-    """Singleton embedded svara orchestrator."""
+    """Client for Kenpath svara OpenAI-compatible TTS API."""
 
     def __init__(self) -> None:
-        from tts_engine.orchestrator import SvaraTTSOrchestrator
-        from tts_engine.transports import VLLMEmbeddedTransport
-
-        logger.info(
-            'Initializing svara vLLM model=%s gpu_mem=%.2f',
-            SVARA_MODEL,
-            SVARA_VLLM_GPU_MEMORY_UTILIZATION,
-        )
-        VLLMEmbeddedTransport.initialize_engine(
-            model=SVARA_MODEL,
-            gpu_memory_utilization=SVARA_VLLM_GPU_MEMORY_UTILIZATION,
-            max_model_len=SVARA_VLLM_MAX_MODEL_LEN,
-        )
-        transport = VLLMEmbeddedTransport(model=SVARA_MODEL)
-        self._orchestrator = SvaraTTSOrchestrator(
-            transport=transport,
-            model=SVARA_MODEL,
-            speaker_id=resolve_svara_speaker('hi'),
-            device=SVARA_SNAC_DEVICE or None,
-            prebuffer_seconds=0.5,
-            concurrent_decode=True,
-        )
         self._lock = threading.Lock()
         self._active_speaker = resolve_svara_speaker('hi')
         self._active_reply_script = 'hi'
+        logger.info('svara HTTP client configured url=%s model=%s', SVARA_TTS_URL, SVARA_MODEL)
 
     def set_active_speaker(
         self,
@@ -105,7 +96,8 @@ class SvaraTtsManager:
         self._active_speaker = resolve_svara_speaker(script, voice_id)
 
     def warmup(self) -> None:
-        self._orchestrator.warmup()
+        if not _check_sidecar_health(timeout=10.0):
+            raise RuntimeError(_availability_error or 'svara sidecar unhealthy')
 
     def synthesize_stream_sync(
         self,
@@ -124,13 +116,25 @@ class SvaraTtsManager:
             return
 
         speaker = resolve_svara_speaker(script, voice_id) if voice_id else self._active_speaker
+        payload = {
+            'model': SVARA_MODEL,
+            'input': prepped,
+            'voice': speaker,
+            'response_format': 'pcm',
+            'stream': True,
+        }
+        timeout = httpx.Timeout(SVARA_TTS_TIMEOUT_SEC, connect=10.0)
+
         with self._lock:
-            for pcm_chunk in self._orchestrator.stream(
-                prepped,
-                speaker_id=speaker,
-            ):
-                if pcm_chunk:
-                    yield ensure_pcm_s16le_bytes(pcm_chunk, sample_rate=SAMPLE_RATE), SAMPLE_RATE
+            with httpx.Client(timeout=timeout) as client:
+                with client.stream('POST', _speech_url(), json=payload) as response:
+                    response.raise_for_status()
+                    for chunk in response.iter_bytes(chunk_size=4096):
+                        if chunk:
+                            yield (
+                                ensure_pcm_s16le_bytes(chunk) or b'',
+                                SAMPLE_RATE,
+                            )
 
     def synthesize_wav_bytes(
         self,
@@ -165,7 +169,7 @@ def get_manager() -> SvaraTtsManager:
 def warmup() -> None:
     global _ready, _warmup_error
     if not svara_available():
-        _warmup_error = _import_error or 'svara not available'
+        _warmup_error = _availability_error or f'svara sidecar unreachable at {SVARA_TTS_URL}'
         logger.warning('svara warmup skipped: %s', _warmup_error)
         return
     try:
@@ -173,7 +177,7 @@ def warmup() -> None:
         mgr.warmup()
         _ready = True
         _warmup_error = None
-        logger.info('svara-TTS warmup complete')
+        logger.info('svara-TTS sidecar warmup complete (%s)', SVARA_TTS_URL)
     except Exception as exc:
         _warmup_error = str(exc)
         _ready = False

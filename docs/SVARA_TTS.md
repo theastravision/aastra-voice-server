@@ -1,25 +1,34 @@
 # svara-TTS (Indic languages)
 
-English interview speech uses **F5-TTS** (unchanged). Hindi, Hinglish, and other Indic languages use **embedded [svara-tts-v1](https://huggingface.co/kenpath/svara-tts-v1)** from Kenpath.
+English interview speech uses **F5-TTS** (unchanged). Hindi, Hinglish, and other Indic languages use **[svara-tts-v1](https://huggingface.co/kenpath/svara-tts-v1)** via a **separate sidecar process** (`.venv-svara` on port 8080).
+
+F5 and svara **cannot share one Python venv** — vLLM 0.17+ needs PyTorch 2.10 while F5 uses cu124 torch. Mixing them breaks CUDA/NVRTC and warmup.
 
 ## Requirements
 
 - NVIDIA GPU with **24GB+ VRAM** recommended when running F5 + svara together
-- CUDA drivers and PyTorch already installed (see `scripts/install-f5-tts.sh`)
 - Git
+- Main `.venv` for F5 + FastAPI (`bash scripts/install-f5-tts.sh`)
+- Separate `.venv-svara` for svara (`bash scripts/install-svara-tts.sh`)
 
 ## Install
 
 ```bash
+# Main server (F5, Whisper, FastAPI)
+bash scripts/install-f5-tts.sh
+
+# svara sidecar (separate venv — do NOT pip install into main .venv)
 bash scripts/install-svara-tts.sh
 ```
 
-This clones `Kenpath/svara-tts-inference` into `vendor/svara-tts-inference` and installs `requirements-svara.txt`.
+This clones `Kenpath/svara-tts-inference` into `vendor/svara-tts-inference` and installs `requirements-svara-sidecar.txt` into `.venv-svara` only.
 
 ## Configuration (`.env`)
 
 ```env
 TTS_INDIC_ENGINE=svara
+SVARA_TTS_URL=http://127.0.0.1:8080
+SVARA_TTS_TIMEOUT_SEC=120
 SVARA_MODEL=kenpath/svara-tts-v1
 SVARA_VLLM_GPU_MEMORY_UTILIZATION=0.50
 SVARA_SNAC_DEVICE=cuda
@@ -35,22 +44,43 @@ Optional emotion tag for clearer proper nouns:
 SVARA_EMOTION_TAG=<clear>
 ```
 
+## Start / stop
+
+```bash
+# Start both (svara sidecar + voice server)
+bash scripts/run-demo-background.sh
+
+# Or manually:
+bash scripts/run-svara-sidecar.sh --background
+bash scripts/wait-svara-health.sh
+bash scripts/run-demo.sh
+
+# Stop both
+bash scripts/stop-voice.sh
+```
+
 ## Routing
 
 | Language | Engine |
 |----------|--------|
 | `en` | F5 (`astra` voice) |
-| `hi`, `hinglish`, `ta`, `bn`, … | svara |
+| `hi`, `hinglish`, `ta`, `bn`, … | svara HTTP sidecar |
 
 Voices are defined in [`data/voices.json`](../data/voices.json). Svara voices use `"engine": "svara"` and `"svara_speaker": "Hindi (Female)"`.
 
 ## Health check
 
-After restart, `GET /api/v1/demo/config` returns:
+```bash
+curl http://127.0.0.1:8080/health          # svara sidecar
+curl http://127.0.0.1:8000/api/v1/demo/config  # voice server
+```
+
+`GET /api/v1/demo/config` returns:
 
 - `tts_indic_engine`: `svara`
-- `svara_ready`: `true` when warmup succeeded
-- `svara_error`: error message if install/warmup failed
+- `svara_url`: configured sidecar URL
+- `svara_ready`: `true` when sidecar health + warmup succeeded
+- `svara_error`: error message if sidecar unreachable
 
 ## Supported svara languages
 
@@ -60,12 +90,22 @@ Hindi, Bengali, Marathi, Telugu, Kannada, Bhojpuri, Magahi, Chhattisgarhi, Maith
 
 | Issue | Fix |
 |-------|-----|
-| `svara_ready: false`, vendor missing | Run `bash scripts/install-svara-tts.sh` |
-| CUDA OOM on warmup | Lower `SVARA_VLLM_GPU_MEMORY_UTILIZATION` to `0.40` |
-| `libnvrtc-builtins.so.13.0` / F5 warmup failed | `pip install nvidia-cuda-nvrtc-cu12 nvidia-cuda-runtime-cu12` then restart |
-| Indic still sounds like F5 clone | Confirm `TTS_INDIC_ENGINE=svara` and restart server |
+| `svara_ready: false`, sidecar unreachable | `bash scripts/install-svara-tts.sh` then `bash scripts/run-svara-sidecar.sh --background` |
+| F5 `libnvrtc-builtins.so.13.0` after svara install in main venv | `pip uninstall -y vllm flashinfer-python snac torchcodec` in `.venv`, reinstall F5 torch, use `.venv-svara` only for svara |
+| CUDA OOM on sidecar warmup | Lower `SVARA_VLLM_GPU_MEMORY_UTILIZATION` to `0.40` |
+| Indic still sounds like F5 clone | Confirm `TTS_INDIC_ENGINE=svara` and sidecar healthy |
 | English changed | English always uses F5; check `reply_script=en` in logs |
+| Port 8080 in use | Change `SVARA_TTS_URL` and `SVARA_PORT` |
 
 ## Text preparation
 
 Svara receives Devanagari/mixed script with ellipsis pauses — **not** phonetic hyphenation. See [`engines/tts_svara_pipeline.py`](../engines/tts_svara_pipeline.py).
+
+## Architecture
+
+```
+.venv (port 8000)          .venv-svara (port 8080)
+FastAPI + F5 + Whisper  →  HTTP POST /v1/audio/speech  →  Kenpath api/server.py + vLLM
+```
+
+Main server never imports vLLM; it only calls the sidecar over HTTP.

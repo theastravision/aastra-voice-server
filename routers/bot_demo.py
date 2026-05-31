@@ -46,7 +46,7 @@ class DemoTtsRequest(BaseModel):
 @router.get('/config')
 async def demo_config():
     _ensure_demo_enabled()
-    from config import TTS_INDIC_ENGINE
+    from config import SVARA_TTS_URL, TTS_INDIC_ENGINE
     from core.model_state import models_ready, svara_ready, svara_warmup_error, warmup_error
 
     from engines.voice_registry import get_default_voice_id, list_voices
@@ -74,6 +74,7 @@ async def demo_config():
         'warmup_error': warmup_error(),
         'svara_ready': svara_ready(),
         'svara_error': svara_warmup_error(),
+        'svara_url': SVARA_TTS_URL,
         'ws_path': '/ws/voice',
     }
 
