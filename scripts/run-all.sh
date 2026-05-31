@@ -2,6 +2,8 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 # Aastra Voice Server — ONE script: install (if needed) → build UI → run → ngrok
 #
+# Dual-venv TTS: main .venv (F5 + FastAPI) + .venv-svara (Indic svara sidecar :8080)
+#
 # Usage (Salad / Linux GPU):
 #   cd /workspace/voice-server
 #   chmod +x scripts/run-all.sh
@@ -24,11 +26,11 @@
 #
 # What it does every run:
 #   1. Ensure .env exists
-#   2. Install deps ONLY if .venv / F5-TTS missing (unless --install)
+#   2. Install deps ONLY if .venv / .venv-svara / F5 / svara missing (unless --install)
 #   3. Build React UI (/interview)
 #   4. Warm/download models (quick skip if already cached)
-#   5. Stop old server + ngrok
-#   6. Start voice server on PORT (default 8000)
+#   5. Stop old server + svara sidecar + ngrok
+#   6. Start svara sidecar (:8080) + voice server on PORT (default 8000)
 #   7. Wait for /health models_ready
 #   8. ngrok config add-authtoken + ngrok http 8000
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -150,6 +152,23 @@ ensure_ngrok_binary() {
   command -v ngrok >/dev/null 2>&1
 }
 
+needs_svara_install() {
+  local indic_engine="${TTS_INDIC_ENGINE:-svara}"
+  if [[ "$indic_engine" != "svara" ]]; then
+    return 1
+  fi
+  if [[ ! -d "$ROOT/.venv-svara" ]]; then
+    return 0
+  fi
+  if [[ ! -d "$ROOT/vendor/svara-tts-inference/api" ]]; then
+    return 0
+  fi
+  if ! "$ROOT/.venv-svara/bin/python" -c "import vllm" 2>/dev/null; then
+    return 0
+  fi
+  return 1
+}
+
 needs_install() {
   if $DO_INSTALL; then
     return 0
@@ -158,6 +177,9 @@ needs_install() {
     return 0
   fi
   if ! "$ROOT/.venv/bin/python" -c "from engines.f5_tts_engine import f5_available; exit(0 if f5_available() else 1)" 2>/dev/null; then
+    return 0
+  fi
+  if needs_svara_install; then
     return 0
   fi
   return 1
@@ -199,6 +221,12 @@ install_all() {
   echo "Installing F5-TTS…"
   bash "$ROOT/scripts/install-f5-tts.sh"
 
+  load_env_file "$ROOT/.env" 2>/dev/null || true
+  if [[ "${TTS_INDIC_ENGINE:-svara}" == "svara" ]]; then
+    echo "Installing svara-TTS sidecar (.venv-svara — separate from F5 venv)…"
+    bash "$ROOT/scripts/install-svara-tts.sh"
+  fi
+
   bash "$ROOT/scripts/salad-append-env.sh" 2>/dev/null || true
   bash "$ROOT/scripts/sync-env.sh" "$ROOT/.env"
   load_env_file "$ROOT/.env"
@@ -221,6 +249,16 @@ patch_env_tts() {
     echo "ERROR: f5-tts not installed — run: bash scripts/run-all.sh --install"
     exit 1
   fi
+  if [[ "${TTS_INDIC_ENGINE:-svara}" == "svara" ]]; then
+    if [[ ! -d "$ROOT/.venv-svara" ]] || [[ ! -d "$ROOT/vendor/svara-tts-inference/api" ]]; then
+      echo "ERROR: svara sidecar not installed — run: bash scripts/run-all.sh --install"
+      exit 1
+    fi
+    if ! "$ROOT/.venv-svara/bin/python" -c "import vllm" 2>/dev/null; then
+      echo "ERROR: svara venv missing vllm — run: bash scripts/run-all.sh --install"
+      exit 1
+    fi
+  fi
   ensure_astra_reference
   export TTS_PROVIDER=f5
   export BOT_MODE=interview
@@ -241,7 +279,7 @@ ensure_astra_reference() {
 }
 
 stop_all() {
-  echo "Stopping voice server and ngrok…"
+  echo "Stopping voice server, svara sidecar, and ngrok…"
   PORT="$PORT" bash "$ROOT/scripts/stop-voice.sh" || true
   pkill -f 'ngrok http' 2>/dev/null || true
 }
@@ -258,6 +296,9 @@ start_server() {
   fi
 
   echo "Starting voice server on http://${HOST}:${PORT}…"
+  if [[ "${TTS_INDIC_ENGINE:-svara}" == "svara" ]]; then
+    echo "  (includes svara sidecar at ${SVARA_TTS_URL:-http://127.0.0.1:8080})"
+  fi
   export HOST PORT TTS_PROVIDER
   rm -f "$PID_FILE"
   nohup bash "$ROOT/scripts/run-demo.sh" >>"$LOG" 2>&1 &
@@ -321,15 +362,22 @@ for t in d.get('tunnels', []):
 }
 
 print_summary() {
+  local svara_url="${SVARA_TTS_URL:-http://127.0.0.1:8080}"
   echo ""
   echo "══════════════════════════════════════════════════════════════════════════"
   echo "  DONE — Aastra Voice Server"
   echo "══════════════════════════════════════════════════════════════════════════"
   echo "  Local health:   http://127.0.0.1:${PORT}/health"
+  if [[ "${TTS_INDIC_ENGINE:-svara}" == "svara" ]]; then
+    echo "  svara sidecar:  ${svara_url}/health"
+  fi
   echo "  Interview UI:   http://127.0.0.1:${PORT}/interview/"
   echo "  Training tab:   http://127.0.0.1:${PORT}/interview/  → Training"
   echo "  Bot demo:       http://127.0.0.1:${PORT}/bot"
   echo "  Server log:     tail -f $LOG"
+  if [[ "${TTS_INDIC_ENGINE:-svara}" == "svara" ]]; then
+    echo "  svara log:      tail -f $ROOT/svara-sidecar.log"
+  fi
   echo "  Stop all:       bash scripts/stop-voice.sh"
   echo "══════════════════════════════════════════════════════════════════════════"
 }
@@ -348,7 +396,11 @@ step 2 "Install (skip if already done)"
 if needs_install; then
   install_all
 else
-  echo "Already installed (.venv + F5-TTS OK) — skipping full install."
+  svara_note=""
+  if [[ "${TTS_INDIC_ENGINE:-svara}" == "svara" ]]; then
+    svara_note=" + .venv-svara svara sidecar"
+  fi
+  echo "Already installed (.venv + F5-TTS${svara_note} OK) — skipping full install."
   echo "  (Use --install to force reinstall)"
 fi
 
@@ -365,7 +417,7 @@ fi
 step 5 "Stop previous server + ngrok"
 stop_all
 
-step 6 "Start voice server"
+step 6 "Start svara sidecar + voice server"
 start_server
 
 step 7 "Wait for health"
