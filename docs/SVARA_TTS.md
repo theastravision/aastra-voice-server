@@ -71,9 +71,35 @@ Voices are defined in [`data/voices.json`](../data/voices.json). Svara voices us
 ## Health check
 
 ```bash
-curl http://127.0.0.1:8080/health          # svara sidecar
-curl http://127.0.0.1:8000/api/v1/demo/config  # voice server
+curl http://127.0.0.1:8080/health                    # svara sidecar (must be HTTP 200)
+curl http://127.0.0.1:8888/api/v1/demo/config        # voice server (Salad default PORT=8888)
 ```
+
+Required `.env` for Indic routing:
+
+```env
+TTS_INDIC_ENGINE=svara
+SVARA_TTS_URL=http://127.0.0.1:8080
+PORT=8888
+```
+
+Until `curl :8080/health` returns 200, Hindi/Hinglish **falls back to F5** (robotic cloned voice).
+
+### Verify routing in logs
+
+After restart, grep the voice-server log:
+
+```bash
+grep -E 'falling back to F5|TTS backend=' voice-server.log
+```
+
+| Log line | Meaning |
+|----------|---------|
+| `TTS backend=svara reply_script=hi` | Indic turn uses native svara voice |
+| `TTS backend=f5 reply_script=hi` | Sidecar down or `TTS_INDIC_ENGINE` not `svara` |
+| `svara unavailable (...); falling back to F5` | Health check failed — start sidecar |
+
+WebSocket `turn_start` events include `tts_backend` (`f5` or `svara`) for browser devtools.
 
 `GET /api/v1/demo/config` returns:
 

@@ -343,12 +343,33 @@ start_server() {
   fi
 }
 
+wait_for_server_up() {
+  local max="${WAIT_SERVER_SECS:-90}"
+  local check_port
+  check_port="$(bash "$ROOT/scripts/resolve-service-port.sh" 2>/dev/null | tail -1)"
+  local url="http://127.0.0.1:${check_port}/health"
+  echo "Waiting for voice server HTTP (up to ${max}s): $url"
+  for ((i = 1; i <= max; i++)); do
+    if curl -sf --max-time 3 "$url" >/dev/null 2>&1; then
+      echo "Voice server up on port ${check_port}."
+      return 0
+    fi
+    if (( i == 1 || i % 10 == 0 )); then
+      echo "  … waiting (${i}s) — tail -f $LOG"
+    fi
+    sleep 1
+  done
+  echo "ERROR: voice server not responding on port ${check_port}" >&2
+  tail -30 "$LOG" 2>/dev/null || true
+  return 1
+}
+
 wait_for_health() {
   local max="${WAIT_HEALTH_SECS:-180}"
   local check_port
   check_port="$(bash "$ROOT/scripts/resolve-service-port.sh" 2>/dev/null | tail -1)"
   local url="http://127.0.0.1:${check_port}/health"
-  echo "Waiting for models (up to ${max}s): $url"
+  echo "Waiting for models_ready (up to ${max}s): $url"
   for ((i = 1; i <= max; i++)); do
     resp="$(curl -sf "$url" 2>/dev/null)" || { sleep 1; continue; }
     if echo "$resp" | grep -q '"models_ready":\s*true'; then
@@ -486,10 +507,13 @@ else
 fi
 
 step 6 "Start svara sidecar + voice server"
-start_server
+start_server || { echo "ERROR: failed to start voice server"; exit 1; }
 
-step 7 "Wait for health"
-wait_for_health || true
+step 7 "Wait for voice server HTTP (required before ngrok)"
+if ! wait_for_server_up; then
+  echo "ERROR: not starting ngrok — nothing listening. Check: bash scripts/diagnose-start.sh"
+  exit 1
+fi
 
 step 8 "ngrok tunnel"
 if $DO_NGROK; then
@@ -497,6 +521,9 @@ if $DO_NGROK; then
 else
   echo "Skipped (--no-ngrok)"
 fi
+
+step 9 "Wait for models_ready (background warmup)"
+wait_for_health || true
 
 print_summary
 if $DO_QUICK; then

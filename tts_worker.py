@@ -39,6 +39,12 @@ class TtsWorker:
         else:
             self._reply_script = 'en'
         self._backend = resolve_tts_backend(self._reply_script)
+        logger.info(
+            'TTS backend=%s reply_script=%s voice_id=%s',
+            self._backend,
+            self._reply_script,
+            voice_id,
+        )
 
         if self._backend == 'f5':
             from engines.f5_tts_engine import get_manager

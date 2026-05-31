@@ -36,9 +36,22 @@ if [[ ! -d "$VENDOR/api" ]]; then
   exit 1
 fi
 
-if [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
-  echo "svara sidecar already running (pid $(cat "$PID_FILE")) on port ${SVARA_PORT}"
+_health_ok() {
+  curl -sf --max-time 3 "${SVARA_TTS_URL%/}/health" >/dev/null 2>&1
+}
+
+if _health_ok; then
+  echo "svara sidecar already healthy on http://${SVARA_TTS_URL#*://}"
   exit 0
+fi
+
+if [[ -f "$PID_FILE" ]]; then
+  OLD_PID="$(cat "$PID_FILE")"
+  if kill -0 "$OLD_PID" 2>/dev/null; then
+    echo "svara pid ${OLD_PID} warming or unhealthy — check: tail -f $LOG"
+    exit 0
+  fi
+  rm -f "$PID_FILE"
 fi
 
 if command -v ss >/dev/null 2>&1 && ss -tlnp 2>/dev/null | grep -q ":${SVARA_PORT} "; then

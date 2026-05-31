@@ -47,6 +47,7 @@ from engines.stt_filters import (
 )
 from engines.voice_registry import get_default_voice_id, get_voice, resolve_voice_for_language
 from engines.tts_utils import ensure_pcm_s16le_bytes, is_speakable_text
+from engines.tts_router import resolve_tts_backend
 from llm_worker import LlmWorker
 from providers.registry import create_stt
 from streaming.audio_buffer import DuplexAudioState
@@ -204,7 +205,7 @@ class InterviewSession:
         await self._duplex.begin_turn()
         await self._duplex.set_agent_speaking(True)
         self._turn_audio_config_sent = False
-        await self._send_json(_evt('turn_start'))
+        await self._emit_turn_start(reply_script=script, notify_bus=False)
         try:
             tts_route = pick_tts_route_for_session(self._session_lang, script)
             await self._tts.start(language_hint=tts_route, voice_id=self._voice_id)
@@ -247,6 +248,18 @@ class InterviewSession:
             return
         await self._send_json(_evt('turn_end'))
         await self._bus.turn_event(self.session_id, 'turn_end')
+
+    async def _emit_turn_start(
+        self,
+        *,
+        reply_script: str | None = None,
+        notify_bus: bool = True,
+    ) -> None:
+        script = (reply_script or 'en').lower()
+        backend = resolve_tts_backend(script)
+        await self._send_json(_evt('turn_start', tts_backend=backend))
+        if notify_bus:
+            await self._bus.turn_event(self.session_id, 'turn_start')
 
     async def handle_barge_in(self, offset_ms: float) -> None:
         await self.on_barge_in(offset_ms)
@@ -468,8 +481,7 @@ class InterviewSession:
         await self._duplex.begin_turn()
         await self._duplex.set_agent_speaking(True)
         await self._reset_stt_buffer()
-        await self._send_json(_evt('turn_start'))
-        await self._bus.turn_event(self.session_id, 'turn_start')
+        await self._emit_turn_start(reply_script=reply_script)
         try:
             self._history.append({'role': 'user', 'content': user_text})
             tts_route = pick_tts_route_for_session(self._session_lang, reply_script)
@@ -503,12 +515,10 @@ class InterviewSession:
         await self._duplex.set_agent_speaking(True)
         await self._reset_stt_buffer()
         self._turn_audio_config_sent = False
-        await self._send_json(_evt('turn_start'))
-        await self._bus.turn_event(self.session_id, 'turn_start')
         reply_script = pick_reply_script_for_session(
             self._session_lang, self._last_detected_lang, user_text
         )
-
+        await self._emit_turn_start(reply_script=reply_script)
         if is_off_topic_interview_question(user_text):
             refusal, script = off_topic_refusal_message(self._session_lang, reply_script)
             await self._run_canned_reply(user_text, refusal, script)
@@ -582,9 +592,9 @@ class InterviewSession:
         await self._state.transition(SessionPhase.TTS_PLAYING)
         await self._duplex.begin_turn()
         await self._duplex.set_agent_speaking(True)
-        await self._send_json(_evt('turn_start'))
+        ack, script = repeat_last_question_message(self._session_lang)
+        await self._emit_turn_start(reply_script=script, notify_bus=False)
         try:
-            ack, script = repeat_last_question_message(self._session_lang)
             tts_route = pick_tts_route_for_session(self._session_lang, script)
             await self._tts.start(language_hint=tts_route, voice_id=self._voice_id)
             await self._send_json(_evt('assistant_delta', text=ack))
@@ -666,7 +676,7 @@ class InterviewSession:
         self._turn_audio_config_sent = False
         await self._duplex.begin_turn()
         await self._duplex.set_agent_speaking(True)
-        await self._send_json(_evt('turn_start'))
+        await self._emit_turn_start(reply_script=script, notify_bus=False)
         try:
             tts_route = pick_tts_route_for_session(self._session_lang, script)
             await self._tts.start(language_hint=tts_route, voice_id=self._voice_id)
@@ -704,8 +714,9 @@ class InterviewSession:
         if not cleaned or not is_speakable_text(cleaned):
             return
         melo_phrase = getattr(self._tts, '_backend', '') == 'melotts'
+        svara_phrase = getattr(self._tts, '_backend', '') == 'svara'
         try:
-            if melo_phrase:
+            if melo_phrase or svara_phrase:
                 await self._stream_melo_phrase(cleaned)
                 return
             async for chunk in self._tts.synthesize_stream(cleaned):

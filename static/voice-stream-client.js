@@ -9,7 +9,107 @@
   const MIN_SPEECH_MS = 500;
   const END_COOLDOWN_MS = 1200;
   const BARGE_IN_DEBOUNCE_MS = 300;
-  const PLAYBACK_LEAD_SEC = 0.03;
+  const PLAYBACK_PREBUFFER_MS = 250;
+  const PLAYBACK_MERGE_MS = 150;
+  const CROSSFADE_MS = 8;
+
+  function pcmBytesToFloat32(pcmBytes) {
+    const n = pcmBytes.byteLength / 2;
+    const view = new DataView(pcmBytes);
+    const floats = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      floats[i] = view.getInt16(i * 2, true) / 32768;
+    }
+    return floats;
+  }
+
+  function applyCrossfade(samples, fadeSamples) {
+    const n = samples.length;
+    if (fadeSamples <= 0 || n < fadeSamples * 2) return samples;
+    for (let i = 0; i < fadeSamples; i++) {
+      const gain = i / fadeSamples;
+      samples[i] *= gain;
+      samples[n - 1 - i] *= gain;
+    }
+    return samples;
+  }
+
+  class PcmPlaybackQueue {
+    constructor(client) {
+      this._client = client;
+      this._pending = [];
+      this._pendingBytes = 0;
+      this._draining = false;
+      this._playbackStarted = false;
+    }
+
+    reset() {
+      this._pending = [];
+      this._pendingBytes = 0;
+      this._playbackStarted = false;
+    }
+
+    enqueue(arrayBuffer) {
+      if (!arrayBuffer || !arrayBuffer.byteLength) return;
+      this._pending.push(new Uint8Array(arrayBuffer));
+      this._pendingBytes += arrayBuffer.byteLength;
+      if (!this._draining) {
+        this._draining = true;
+        void this._drainLoop();
+      }
+    }
+
+    _takeBytes(n) {
+      const out = new Uint8Array(n);
+      let offset = 0;
+      while (offset < n && this._pending.length) {
+        const head = this._pending[0];
+        const need = n - offset;
+        if (head.length <= need) {
+          out.set(head, offset);
+          offset += head.length;
+          this._pending.shift();
+        } else {
+          out.set(head.subarray(0, need), offset);
+          this._pending[0] = head.subarray(need);
+          offset = n;
+        }
+      }
+      this._pendingBytes -= n;
+      return out;
+    }
+
+    async _drainLoop() {
+      const client = this._client;
+      try {
+        while (this._pendingBytes >= 2) {
+          const sr = client._playbackSourceRate || 24000;
+          const bytesPerMs = (sr * 2) / 1000;
+          const prebufferBytes = Math.floor(bytesPerMs * PLAYBACK_PREBUFFER_MS);
+          const mergeBytes = Math.max(2, Math.floor(bytesPerMs * PLAYBACK_MERGE_MS));
+
+          if (!this._playbackStarted && this._pendingBytes < prebufferBytes) {
+            await new Promise((resolve) => setTimeout(resolve, 8));
+            continue;
+          }
+          this._playbackStarted = true;
+
+          let take = Math.min(this._pendingBytes, mergeBytes);
+          take -= take % 2;
+          if (take < 2) break;
+
+          const merged = this._takeBytes(take);
+          await client._schedulePcmChunk(merged.buffer, sr);
+        }
+      } finally {
+        this._draining = false;
+        if (this._pendingBytes >= 2) {
+          this._draining = true;
+          void this._drainLoop();
+        }
+      }
+    }
+  }
 
   function floatTo16kPcm(input, inputRate) {
     const ratio = inputRate / TARGET_SR;
@@ -61,6 +161,7 @@
       this._bargeInArmedAt = 0;
       this._playbackSources = [];
       this._silenceEndMs = options.silenceEndMs ?? DEFAULT_SILENCE_END_MS;
+      this._pcmQueue = new PcmPlaybackQueue(this);
     }
 
     setListenPaused(paused) {
@@ -86,7 +187,12 @@
         this.playbackSampleRate = sourceSampleRate;
       }
       if (!this.playbackCtx) {
-        this.playbackCtx = new AudioContext();
+        const rate = sourceSampleRate || 24000;
+        try {
+          this.playbackCtx = new AudioContext({ sampleRate: rate });
+        } catch (_) {
+          this.playbackCtx = new AudioContext();
+        }
         this.nextPlayTime = 0;
       }
       if (this.playbackCtx.state === 'suspended') {
@@ -167,7 +273,7 @@
         };
         this.ws.onmessage = async (ev) => {
           if (ev.data instanceof ArrayBuffer) {
-            await this._playPcm(ev.data, this.playbackSampleRate);
+            this._pcmQueue.enqueue(ev.data);
             return;
           }
           let msg;
@@ -195,6 +301,7 @@
         w.close();
       }
       this._stopPlaybackSources();
+      this._pcmQueue.reset();
       if (this.playbackCtx) {
         try {
           await this.playbackCtx.close();
@@ -205,39 +312,36 @@
       this.onConnectionChange(false);
     }
 
-    async _playPcm(pcmBytes, sampleRate) {
+    async _schedulePcmChunk(pcmBytes, sampleRate) {
       const srcRate = sampleRate || this._playbackSourceRate || 24000;
       const ctx = await this.ensurePlaybackReady(srcRate);
-      const n = pcmBytes.byteLength / 2;
-      const view = new DataView(pcmBytes);
-      const floats = new Float32Array(n);
-      for (let i = 0; i < n; i++) {
-        floats[i] = view.getInt16(i * 2, true) / 32768;
+      const floats = pcmBytesToFloat32(pcmBytes);
+      const fadeSamples = Math.floor((srcRate * CROSSFADE_MS) / 1000);
+      applyCrossfade(floats, fadeSamples);
+
+      const startAt = Math.max(this.nextPlayTime, ctx.currentTime);
+      if (!this.turnPlaybackStartTime) {
+        this.turnPlaybackStartTime = startAt;
       }
 
-      if (this.nextPlayTime < ctx.currentTime) {
-        this.nextPlayTime = ctx.currentTime + PLAYBACK_LEAD_SEC;
-        this.turnPlaybackStartTime = this.nextPlayTime;
-      }
-
-      const buf = ctx.createBuffer(1, n, srcRate);
+      const buf = ctx.createBuffer(1, floats.length, srcRate);
       buf.copyToChannel(floats, 0);
       const src = ctx.createBufferSource();
       src.buffer = buf;
       src.connect(ctx.destination);
-      const t = this.nextPlayTime;
-      src.start(t);
+      src.start(startAt);
       this._playbackSources.push(src);
       src.onended = () => {
         const idx = this._playbackSources.indexOf(src);
         if (idx >= 0) this._playbackSources.splice(idx, 1);
       };
-      this.nextPlayTime = t + buf.duration;
+      this.nextPlayTime = startAt + buf.duration;
       this._setSpeaking(true);
     }
 
     interrupt(notifyServer = true) {
       this._stopPlaybackSources();
+      this._pcmQueue.reset();
       if (notifyServer && this.ws && this.ws.readyState === WebSocket.OPEN) {
         let offset = 0;
         if (this.playbackCtx && this.turnPlaybackStartTime) {

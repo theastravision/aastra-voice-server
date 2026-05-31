@@ -56,14 +56,14 @@ async function fetchDemoConfig() {
 
 async function waitForModelsReady(initialCfg) {
   let cfg = initialCfg
-  if (cfg.warmup_error) {
+  if (cfg.warmup_error && cfg.models_ready !== true) {
     throw new Error(`Voice models failed to load: ${cfg.warmup_error}`)
   }
   if (cfg.models_ready === true) return cfg
   for (let i = 0; i < 90 && cfg.models_ready !== true; i++) {
     await new Promise((r) => setTimeout(r, 2000))
     cfg = await fetchDemoConfig()
-    if (cfg.warmup_error) {
+    if (cfg.warmup_error && cfg.models_ready !== true) {
       throw new Error(`Voice models failed to load: ${cfg.warmup_error}`)
     }
   }
@@ -496,7 +496,7 @@ export default function AstraInterviewDashboard() {
                 Loading voice models… Start call will wait until ready.
               </p>
             )}
-            {warmupError && (
+            {warmupError && !modelsReady && (
               <p className="mb-3 text-xs text-red-400/90">
                 Model warmup error: {warmupError}
               </p>

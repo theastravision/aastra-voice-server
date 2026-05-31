@@ -7,6 +7,7 @@ import logging
 from config import TTS_INDIC_ENGINE, is_indic_reply_script
 
 logger = logging.getLogger(__name__)
+_logged_fallback_reason: str | None = None
 
 
 def resolve_tts_backend(reply_script: str | None) -> str:
@@ -17,12 +18,22 @@ def resolve_tts_backend(reply_script: str | None) -> str:
     if is_indic_reply_script(script):
         if TTS_INDIC_ENGINE == 'svara':
             try:
-                from engines.svara_tts_engine import svara_available
+                from engines.svara_tts_engine import svara_available, svara_error
 
                 if svara_available():
                     return 'svara'
-            except Exception:
+                reason = svara_error() or 'sidecar health check failed'
+            except Exception as exc:
+                reason = str(exc)
                 logger.debug('svara availability check failed', exc_info=True)
-        logger.warning('svara unavailable; falling back to F5 for reply_script=%s', script)
-        return 'f5'
+            global _logged_fallback_reason
+            if reason != _logged_fallback_reason:
+                _logged_fallback_reason = reason
+                logger.warning(
+                    'svara unavailable (%s); falling back to F5 for reply_script=%s — '
+                    'start sidecar: bash scripts/run-svara-sidecar.sh --background',
+                    reason,
+                    script,
+                )
+            return 'f5'
     return 'f5'

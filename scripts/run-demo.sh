@@ -25,13 +25,22 @@ PORT="${PORT:-8000}"
 
 TTS_INDIC_ENGINE="${TTS_INDIC_ENGINE:-svara}"
 if [[ "$TTS_INDIC_ENGINE" == "svara" ]]; then
-  echo "Starting svara sidecar (Indic TTS)..."
+  echo "Starting svara sidecar in background (Indic TTS — loads in .venv-svara)..."
   if ! bash "$ROOT/scripts/run-svara-sidecar.sh" --background; then
     echo "WARN: svara sidecar did not start — Indic TTS may fall back to F5"
     echo "      Fix: bash scripts/install-svara-tts.sh && tail -f svara-sidecar.log"
-  elif ! bash "$ROOT/scripts/wait-svara-health.sh"; then
-    echo "WARN: svara sidecar not healthy yet — starting voice server anyway"
-    echo "      Check: tail -f $ROOT/svara-sidecar.log"
+  else
+    sleep 2
+    SIDECAR_PID_FILE="$ROOT/svara-sidecar.pid"
+    if [[ -f "$SIDECAR_PID_FILE" ]] && kill -0 "$(cat "$SIDECAR_PID_FILE")" 2>/dev/null; then
+      echo "  svara pid $(cat "$SIDECAR_PID_FILE") warming on :8080 — may take several minutes on first load"
+      echo "  tail -f $ROOT/svara-sidecar.log"
+      echo "  when ready: curl ${SVARA_TTS_URL:-http://127.0.0.1:8080}/health"
+    else
+      echo "ERROR: svara sidecar exited immediately — Indic TTS will use F5 until fixed"
+      tail -25 "$ROOT/svara-sidecar.log" 2>/dev/null || echo "  (no svara-sidecar.log)"
+      echo "  Fix: bash scripts/install-svara-tts.sh && bash scripts/run-svara-sidecar.sh --background"
+    fi
   fi
 fi
 

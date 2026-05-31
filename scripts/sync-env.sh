@@ -26,6 +26,14 @@ upsert_env_key() {
   fi
 }
 
+ensure_env_newline() {
+  local file="$1"
+  [[ -f "$file" && -s "$file" ]] || return 0
+  local last
+  last="$(tail -c 1 "$file" 2>/dev/null || true)"
+  [[ "$last" == $'\n' ]] || echo >>"$file"
+}
+
 upsert_env_key_if_missing() {
   local key="$1"
   local val="$2"
@@ -34,7 +42,8 @@ upsert_env_key_if_missing() {
   if grep -qE "^${key}=" "$file" 2>/dev/null; then
     return 0
   fi
-  echo "${key}=${val}" >>"$file"
+  ensure_env_newline "$file"
+  printf '%s\n' "${key}=${val}" >>"$file"
 }
 
 remove_env_key() {
@@ -52,7 +61,16 @@ import sys
 from pathlib import Path
 
 path = Path(sys.argv[1])
-lines = path.read_text(encoding='utf-8').splitlines()
+text = path.read_text(encoding='utf-8')
+# Repair glued keys: SVARA_WARMUP_POLL_SEC=10STT_FOO=bar → two lines
+import re
+text = re.sub(
+    r'^(SVARA_WARMUP_(?:POLL|WAIT)_SEC=\d+)([A-Z][A-Z0-9_]*=)',
+    r'\1\n\2',
+    text,
+    flags=re.MULTILINE,
+)
+lines = text.splitlines()
 entries: list[tuple[str | None, str]] = []
 for line in lines:
     stripped = line.strip()
@@ -144,6 +162,10 @@ sync_pipeline_env() {
   upsert_env_key HOST "*"
   # Do not overwrite PORT — Salad gateway often uses 8888 (set PORT=8888 in .env)
   upsert_env_key_if_missing PORT 8000
+
+  upsert_env_key_if_missing SVARA_WARMUP_WAIT_SEC 300
+  upsert_env_key_if_missing SVARA_WARMUP_POLL_SEC 10
+  upsert_env_key_if_missing SVARA_TTS_URL http://127.0.0.1:8080
   upsert_env_key ALLOW_PUBLIC_DEMO true
   upsert_env_key BOT_MODE interview
   upsert_env_key INTERVIEW_STRICT_MODE true

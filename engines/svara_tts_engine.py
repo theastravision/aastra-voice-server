@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from collections.abc import Iterator
 
 import httpx
@@ -26,6 +27,8 @@ _availability_error: str | None = None
 _warmup_error: str | None = None
 _ready = False
 _sidecar_ok = False
+_last_health_check = 0.0
+HEALTH_STALE_SEC = 30.0
 SAMPLE_RATE = 24000
 
 
@@ -58,10 +61,20 @@ def _check_sidecar_health(*, timeout: float = 5.0) -> bool:
         return False
 
 
-def svara_available() -> bool:
-    if _sidecar_ok:
+def invalidate_sidecar_cache() -> None:
+    global _sidecar_ok
+    _sidecar_ok = False
+
+
+def svara_available(*, force_refresh: bool = False) -> bool:
+    global _last_health_check
+    now = time.monotonic()
+    stale = (now - _last_health_check) >= HEALTH_STALE_SEC
+    if _sidecar_ok and not force_refresh and not stale:
         return True
-    return _check_sidecar_health(timeout=2.0)
+    ok = _check_sidecar_health(timeout=5.0 if force_refresh else 2.0)
+    _last_health_check = now
+    return ok
 
 
 def svara_ready() -> bool:
@@ -125,16 +138,30 @@ class SvaraTtsManager:
         }
         timeout = httpx.Timeout(SVARA_TTS_TIMEOUT_SEC, connect=10.0)
 
-        with self._lock:
-            with httpx.Client(timeout=timeout) as client:
-                with client.stream('POST', _speech_url(), json=payload) as response:
-                    response.raise_for_status()
-                    for chunk in response.iter_bytes(chunk_size=4096):
-                        if chunk:
-                            yield (
-                                ensure_pcm_s16le_bytes(chunk) or b'',
-                                SAMPLE_RATE,
-                            )
+        try:
+            with self._lock:
+                with httpx.Client(timeout=timeout) as client:
+                    with client.stream('POST', _speech_url(), json=payload) as response:
+                        response.raise_for_status()
+                        for chunk in response.iter_bytes(chunk_size=4096):
+                            if chunk:
+                                yield (
+                                    ensure_pcm_s16le_bytes(chunk) or b'',
+                                    SAMPLE_RATE,
+                                )
+        except Exception as exc:
+            invalidate_sidecar_cache()
+            if _check_sidecar_health(timeout=5.0):
+                logger.warning(
+                    'svara synthesis failed but sidecar health OK (transient): %s',
+                    exc,
+                )
+            else:
+                logger.warning(
+                    'svara synthesis failed; sidecar unhealthy: %s',
+                    _availability_error or exc,
+                )
+            raise
 
     def synthesize_wav_bytes(
         self,

@@ -223,7 +223,7 @@ def split_text_by_script(text: str) -> list[tuple[str, Literal['en', 'hi']]]:
 
 
 def llm_language_hint(reply_script: ReplyScript) -> str:
-    from config import TTS_LLM_SCRIPT_STRICT
+    from config import TTS_LLM_SCRIPT_STRICT, TTS_OUTPUT_SCRIPT
     from engines.llm_script_contract import llm_language_hint_strict, uses_devanagari_output
 
     if TTS_LLM_SCRIPT_STRICT and uses_devanagari_output():

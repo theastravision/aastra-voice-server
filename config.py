@@ -13,6 +13,25 @@ configure_cuda_runtime()
 
 _ROOT = Path(__file__).resolve().parent
 
+
+def _env_int(name: str, default: int) -> int:
+    """Parse int from env; tolerate corrupted .env (e.g. 10STT_SILERO...)."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    raw = str(raw).strip()
+    if not raw:
+        return default
+    digits: list[str] = []
+    for ch in raw:
+        if ch.isdigit() or (ch == '-' and not digits):
+            digits.append(ch)
+        else:
+            break
+    if not digits or digits == ['-']:
+        return default
+    return int(''.join(digits))
+
 VOICE_API_KEY = os.environ.get('VOICE_API_KEY', '').strip()
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '').strip()
 OPENAI_MODEL = os.environ.get('OPENAI_MODEL', 'gpt-4o-mini').strip()
@@ -130,6 +149,8 @@ F5_DEVANAGARI_NO_SPLIT_MAX_CHARS = int(
 TTS_INDIC_ENGINE = os.environ.get('TTS_INDIC_ENGINE', 'svara').strip().lower()
 SVARA_TTS_URL = os.environ.get('SVARA_TTS_URL', 'http://127.0.0.1:8080').strip()
 SVARA_TTS_TIMEOUT_SEC = float(os.environ.get('SVARA_TTS_TIMEOUT_SEC', '120'))
+SVARA_WARMUP_WAIT_SEC = _env_int('SVARA_WARMUP_WAIT_SEC', 300)
+SVARA_WARMUP_POLL_SEC = _env_int('SVARA_WARMUP_POLL_SEC', 10)
 SVARA_MODEL = os.environ.get('SVARA_MODEL', 'kenpath/svara-tts-v1').strip()
 SVARA_VLLM_GPU_MEMORY_UTILIZATION = float(
     os.environ.get('SVARA_VLLM_GPU_MEMORY_UTILIZATION', '0.50')
