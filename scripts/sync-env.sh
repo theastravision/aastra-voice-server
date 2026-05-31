@@ -26,6 +26,17 @@ upsert_env_key() {
   fi
 }
 
+upsert_env_key_if_missing() {
+  local key="$1"
+  local val="$2"
+  local file="$ENV_FILE"
+  [[ -f "$file" ]] || touch "$file"
+  if grep -qE "^${key}=" "$file" 2>/dev/null; then
+    return 0
+  fi
+  echo "${key}=${val}" >>"$file"
+}
+
 remove_env_key() {
   local key="$1"
   local file="$ENV_FILE"
@@ -131,7 +142,8 @@ sync_pipeline_env() {
 
   # ── Server / interview defaults ────────────────────────────────────────────
   upsert_env_key HOST "*"
-  upsert_env_key PORT 8000
+  # Do not overwrite PORT — Salad gateway often uses 8888 (set PORT=8888 in .env)
+  upsert_env_key_if_missing PORT 8000
   upsert_env_key ALLOW_PUBLIC_DEMO true
   upsert_env_key BOT_MODE interview
   upsert_env_key INTERVIEW_STRICT_MODE true

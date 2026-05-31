@@ -197,8 +197,12 @@ start_ngrok() {
   if [[ -n "${NGROK_AUTHTOKEN:-}" ]]; then
     ngrok config add-authtoken "$NGROK_AUTHTOKEN" 2>/dev/null || true
   fi
-  echo "==> Starting ngrok http ${PORT}"
-  nohup ngrok http "$PORT" --log=stdout >>"$ROOT/ngrok.log" 2>&1 &
+  echo "==> Starting ngrok (Salad / voice server port)"
+  local ngrok_port upstream
+  ngrok_port="$(bash "$ROOT/scripts/resolve-service-port.sh" 2>/dev/null | tail -1)"
+  upstream="http://127.0.0.1:${ngrok_port}"
+  echo "==> ngrok → ${upstream}"
+  nohup ngrok http "$upstream" --log=stdout >>"$ROOT/ngrok.log" 2>&1 &
   echo $! >"$ROOT/ngrok.pid"
   sleep 2
   if curl -sf http://127.0.0.1:4040/api/tunnels 2>/dev/null | grep -o 'https://[^"]*ngrok[^"]*' | head -1; then

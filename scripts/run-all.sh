@@ -8,8 +8,11 @@
 #   cd /workspace/voice-server
 #   chmod +x scripts/run-all.sh
 #
-#   # Put secrets in .env first (OPENAI_API_KEY, optional NGROK_AUTHTOKEN), then:
+#   # Fast restart when already installed (default — skips UI rebuild + model pre-warm):
 #   bash scripts/run-all.sh
+#
+#   # Full rebuild + model pre-warm (same as --install for UI/models):
+#   bash scripts/run-all.sh --full
 #
 #   # Or pass ngrok token once (also saved to .env if missing):
 #   NGROK_AUTHTOKEN=your_token bash scripts/run-all.sh
@@ -24,15 +27,14 @@
 #   # Skip ngrok tunnel:
 #   bash scripts/run-all.sh --no-ngrok
 #
-# What it does every run:
-#   1. Ensure .env exists
-#   2. Install deps ONLY if .venv / .venv-svara / F5 / svara missing (unless --install)
-#   3. Build React UI (/interview)
-#   4. Warm/download models (quick skip if already cached)
-#   5. Stop old server + svara sidecar + ngrok
-#   6. Start svara sidecar (:8080) + voice server on PORT (default 8000)
-#   7. Wait for /health models_ready
-#   8. ngrok config add-authtoken + ngrok http 8000
+# What it does every run (quick restart when already installed):
+#   1. Load .env (full sync only with --full / --install)
+#   2. Install/repair venvs if missing
+#   3. Stop old server + svara + ngrok first
+#   4. Skip UI rebuild + model pre-warm on quick restart
+#   5. Start svara sidecar + voice server (models warm in background)
+#   6. Wait for /health
+#   7. ngrok
 # ═══════════════════════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -45,12 +47,14 @@ NGROK_LOG="$ROOT/ngrok.log"
 NGROK_PID_FILE="$ROOT/ngrok.pid"
 
 DO_INSTALL=false
+DO_FULL=false
 DO_NGROK=true
 NGROK_TOKEN_ARG=""
 
 for arg in "$@"; do
   case "$arg" in
-    --install|-i) DO_INSTALL=true ;;
+    --install|-i) DO_INSTALL=true; DO_FULL=true ;;
+    --full) DO_FULL=true ;;
     --no-ngrok) DO_NGROK=false ;;
     --ngrok-token=*) NGROK_TOKEN_ARG="${arg#*=}" ;;
     --ngrok-token)
@@ -70,10 +74,16 @@ load_env_file "$ROOT/.env" 2>/dev/null || true
 
 export HOST="${HOST:-*}"
 export PORT="${PORT:-8000}"
+NGROK_UPSTREAM="127.0.0.1"
 
-# Upsert optimized pipeline env keys into .env every run (Ubuntu sed -i)
+# Upsert optimized pipeline env keys into .env (once per run)
+_ENV_SYNCED=false
 sync_pipeline_env() {
+  if $_ENV_SYNCED; then
+    return 0
+  fi
   bash "$ROOT/scripts/sync-env.sh" "$ROOT/.env"
+  _ENV_SYNCED=true
 }
 
 step() {
@@ -169,11 +179,30 @@ needs_svara_install() {
   return 1
 }
 
+needs_f5_repair() {
+  [[ -d "$ROOT/.venv" ]] || return 0
+  bash "$ROOT/scripts/repair-f5-venv.sh" --check-only 2>/dev/null && return 1 || return 0
+}
+
+repair_f5_venv_if_needed() {
+  bash "$ROOT/scripts/repair-f5-venv.sh" --check-only 2>/dev/null && return 0
+  bash "$ROOT/scripts/repair-f5-venv.sh" || {
+    echo "WARN: F5 venv repair failed — trying install-f5-tts.sh"
+    bash "$ROOT/scripts/install-f5-tts.sh" || true
+  }
+}
+  [[ -d "$ROOT/.venv" ]] || return 0
+  bash "$ROOT/scripts/repair-f5-venv.sh" --check-only 2>/dev/null && return 1 || return 0
+}
+
 needs_install() {
   if $DO_INSTALL; then
     return 0
   fi
   if [[ ! -d "$ROOT/.venv" ]]; then
+    return 0
+  fi
+  if needs_f5_repair; then
     return 0
   fi
   if ! "$ROOT/.venv/bin/python" -c "from engines.f5_tts_engine import f5_available; exit(0 if f5_available() else 1)" 2>/dev/null; then
@@ -219,6 +248,7 @@ install_all() {
   pip install -q nvidia-cublas-cu12 "nvidia-cudnn-cu12==9.*" 2>/dev/null || true
 
   echo "Installing F5-TTS…"
+  bash "$ROOT/scripts/repair-f5-venv.sh" --force
   bash "$ROOT/scripts/install-f5-tts.sh"
 
   load_env_file "$ROOT/.env" 2>/dev/null || true
@@ -235,11 +265,6 @@ install_all() {
 }
 
 patch_env_tts() {
-  ensure_env
-  sync_pipeline_env
-  load_env_file "$ROOT/.env"
-  bash "$ROOT/scripts/salad-append-env.sh" 2>/dev/null || true
-  sync_pipeline_env
   load_env_file "$ROOT/.env"
   if [[ ! -d "$ROOT/.venv" ]]; then
     echo "ERROR: No .venv — run: bash scripts/run-all.sh --install"
@@ -259,7 +284,9 @@ patch_env_tts() {
       exit 1
     fi
   fi
-  ensure_astra_reference
+  if $DO_FULL || grep -qiE 'mother nature|silent spectator|some call me nature' "$ROOT/data/voices.json" 2>/dev/null; then
+    ensure_astra_reference
+  fi
   export TTS_PROVIDER=f5
   export BOT_MODE=interview
 }
@@ -308,7 +335,9 @@ start_server() {
 
 wait_for_health() {
   local max="${WAIT_HEALTH_SECS:-180}"
-  local url="http://127.0.0.1:${PORT}/health"
+  local check_port
+  check_port="$(bash "$ROOT/scripts/resolve-service-port.sh" 2>/dev/null | tail -1)"
+  local url="http://127.0.0.1:${check_port}/health"
   echo "Waiting for models (up to ${max}s): $url"
   for ((i = 1; i <= max; i++)); do
     resp="$(curl -sf "$url" 2>/dev/null)" || { sleep 1; continue; }
@@ -331,8 +360,12 @@ start_ngrok() {
   ensure_ngrok_binary || return 1
   ensure_ngrok_token_in_env || return 1
 
-  echo "Starting ngrok http ${PORT}…"
-  nohup ngrok http "$PORT" --log=stdout >>"$NGROK_LOG" 2>&1 &
+  local ngrok_port
+  ngrok_port="$(bash "$ROOT/scripts/resolve-service-port.sh" 2>/dev/null | tail -1)"
+  local upstream="http://${NGROK_UPSTREAM}:${ngrok_port}"
+
+  echo "Starting ngrok → ${upstream} (Salad gateway often uses PORT=8888 in .env)…"
+  nohup ngrok http "$upstream" --log=stdout >>"$NGROK_LOG" 2>&1 &
   echo $! >"$NGROK_PID_FILE"
   sleep 3
 
@@ -384,16 +417,26 @@ print_summary() {
 
 # ─── MAIN ────────────────────────────────────────────────────────────────────
 
+# Fast restart by default when venvs are already OK (--full / --install disables)
+DO_QUICK=true
+if $DO_FULL || $DO_INSTALL; then
+  DO_QUICK=false
+fi
+
 step 1 "Environment"
 ensure_env
-sync_pipeline_env
-bash "$ROOT/scripts/salad-append-env.sh" 2>/dev/null || true
-sync_pipeline_env
-load_env_file "$ROOT/.env"
+if $DO_QUICK; then
+  load_env_file "$ROOT/.env"
+else
+  sync_pipeline_env
+  bash "$ROOT/scripts/salad-append-env.sh" 2>/dev/null || true
+  load_env_file "$ROOT/.env"
+fi
 chmod +x "$ROOT/scripts/"*.sh 2>/dev/null || true
 
-step 2 "Install (skip if already done)"
+step 2 "Install / repair venvs"
 if needs_install; then
+  DO_QUICK=false
   install_all
 else
   svara_note=""
@@ -402,20 +445,35 @@ else
   fi
   echo "Already installed (.venv + F5-TTS${svara_note} OK) — skipping full install."
   echo "  (Use --install to force reinstall)"
+  if [[ -d "$ROOT/.venv" ]]; then
+    repair_f5_venv_if_needed
+  fi
+  if needs_svara_install; then
+    DO_QUICK=false
+    echo "Installing missing svara sidecar (.venv-svara)…"
+    bash "$ROOT/scripts/install-svara-tts.sh"
+  fi
 fi
 
-step 3 "Build React UI"
-bash "$ROOT/scripts/build-interview-ui.sh"
+step 3 "Stop previous server + ngrok"
+stop_all
 
-step 4 "Download / warm models"
-if [[ -d "$ROOT/.venv" ]]; then
+step 4 "Build React UI"
+if $DO_QUICK && [[ -f "$ROOT/interview-ui/dist/index.html" ]]; then
+  echo "SKIP: interview-ui already built (use --full or --install to rebuild)"
+else
+  bash "$ROOT/scripts/build-interview-ui.sh"
+fi
+
+step 5 "Download / warm models"
+if $DO_QUICK; then
+  echo "SKIP: model pre-warm on quick restart (server warms F5/svara in background)"
+  echo "  (Use --full or --install to pre-warm before start)"
+elif [[ -d "$ROOT/.venv" ]]; then
   bash "$ROOT/scripts/download-models.sh" || echo "WARN: model warmup had issues — server may still start"
 else
   echo "SKIP: no .venv"
 fi
-
-step 5 "Stop previous server + ngrok"
-stop_all
 
 step 6 "Start svara sidecar + voice server"
 start_server
@@ -431,3 +489,7 @@ else
 fi
 
 print_summary
+if $DO_QUICK; then
+  echo ""
+  echo "  (Quick restart — use --full to rebuild UI + pre-warm models + sync .env)"
+fi

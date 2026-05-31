@@ -13,6 +13,9 @@ fi
 # shellcheck disable=SC1091
 . "$ROOT/.venv/bin/activate"
 
+echo "==> Ensuring main .venv is clean (no svara/vLLM — those live in .venv-svara)"
+bash "$ROOT/scripts/repair-f5-venv.sh" || true
+
 echo "==> Installing F5-TTS + dependencies"
 pip install --upgrade pip wheel setuptools
 pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu124 || \
@@ -35,6 +38,9 @@ if not f5_available():
     raise SystemExit("FAIL: f5-tts import failed")
 print("OK: f5-tts importable")
 PY
+
+echo "==> Verifying F5 CUDA (mel spectrogram on GPU)"
+bash "$ROOT/scripts/repair-f5-venv.sh" --check-only || bash "$ROOT/scripts/repair-f5-venv.sh"
 
 echo "Done. Set TTS_PROVIDER=f5 in .env and restart the server."
 echo ""
