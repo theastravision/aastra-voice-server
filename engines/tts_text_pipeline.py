@@ -413,6 +413,15 @@ def prepare_text_for_tts(
 
     started = time.perf_counter()
     script: ReplyScript = reply_script if reply_script in ('en', 'hi', 'hinglish') else 'en'  # type: ignore[assignment]
+    if engine == 'svara':
+        from engines.tts_svara_pipeline import prepare_text_for_svara
+
+        return prepare_text_for_svara(
+            text,
+            reply_script=script,
+            session_lang=session_lang,
+            llm_compliant=llm_compliant,
+        )
     mode = _resolve_output_script(
         reply_script=script,
         engine=engine,

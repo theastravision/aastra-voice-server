@@ -103,18 +103,14 @@ TTS_HINGLISH_PACE_PAUSES = os.environ.get('TTS_HINGLISH_PACE_PAUSES', 'true').lo
     'true',
     'yes',
 )
-# Roman syllable spacing for English/Hindi loanwords (tek no lo jee — not hyphens; F5 reads "-" badly)
-TTS_HINGLISH_PHONETIC_HYPHEN = os.environ.get('TTS_HINGLISH_PHONETIC_HYPHEN', 'true').lower() in (
+# Optional static glossary phonetic overrides (off — hyphen/space breaks sound bad on F5/Swara)
+TTS_HINGLISH_PHONETIC_HYPHEN = os.environ.get('TTS_HINGLISH_PHONETIC_HYPHEN', 'false').lower() in (
     '1',
     'true',
     'yes',
 )
-# Syllable join for TTS: space (recommended) or none — never hyphen (sounds unnatural on Swara/F5)
-TTS_HINGLISH_PHONETIC_SEPARATOR = os.environ.get('TTS_HINGLISH_PHONETIC_SEPARATOR', 'space').strip().lower()
-# Minimum token length for dynamic syllable spacing (skip ki, ne, use, aur)
-TTS_HINGLISH_PHONETIC_MIN_LEN = int(os.environ.get('TTS_HINGLISH_PHONETIC_MIN_LEN', '4'))
-# Reverse phonetic hyphens in hi/hinglish STT transcripts
-STT_HINGLISH_PHONETIC_DENORM = os.environ.get('STT_HINGLISH_PHONETIC_DENORM', 'true').lower() in (
+# Reverse optional phonetic forms in hi/hinglish STT transcripts
+STT_HINGLISH_PHONETIC_DENORM = os.environ.get('STT_HINGLISH_PHONETIC_DENORM', 'false').lower() in (
     '1',
     'true',
     'yes',
@@ -127,6 +123,71 @@ F5_CFG_STRENGTH = float(os.environ.get('F5_CFG_STRENGTH', '2.2'))
 F5_DEVANAGARI_NO_SPLIT_MAX_CHARS = int(
     os.environ.get('F5_DEVANAGARI_NO_SPLIT_MAX_CHARS', '90')
 )
+
+# svara-TTS (embedded vLLM) for Indic languages — English stays on F5
+_SVARA_VENDOR_DIR = _ROOT / 'vendor' / 'svara-tts-inference'
+if _SVARA_VENDOR_DIR.is_dir():
+    import sys
+
+    vendor_path = str(_SVARA_VENDOR_DIR)
+    if vendor_path not in sys.path:
+        sys.path.insert(0, vendor_path)
+
+TTS_INDIC_ENGINE = os.environ.get('TTS_INDIC_ENGINE', 'svara').strip().lower()
+SVARA_MODEL = os.environ.get('SVARA_MODEL', 'kenpath/svara-tts-v1').strip()
+SVARA_VLLM_GPU_MEMORY_UTILIZATION = float(
+    os.environ.get('SVARA_VLLM_GPU_MEMORY_UTILIZATION', '0.50')
+)
+SVARA_VLLM_MAX_MODEL_LEN = int(os.environ.get('SVARA_VLLM_MAX_MODEL_LEN', '4096'))
+SVARA_SNAC_DEVICE = os.environ.get('SVARA_SNAC_DEVICE', 'cuda').strip()
+SVARA_DEFAULT_VOICE = os.environ.get('SVARA_DEFAULT_VOICE', 'Hindi (Female)').strip()
+SVARA_HINGLISH_VOICE = os.environ.get('SVARA_HINGLISH_VOICE', 'Hindi (Female)').strip()
+SVARA_EMOTION_TAG = os.environ.get('SVARA_EMOTION_TAG', '').strip()
+
+# ISO-ish codes → svara display speaker names (19 Indic + hinglish alias)
+SVARA_SPEAKER_BY_LANG: dict[str, str] = {
+    'hi': 'Hindi (Female)',
+    'hinglish': SVARA_HINGLISH_VOICE or 'Hindi (Female)',
+    'bn': 'Bengali (Female)',
+    'mr': 'Marathi (Female)',
+    'te': 'Telugu (Female)',
+    'kn': 'Kannada (Female)',
+    'bho': 'Bhojpuri (Female)',
+    'mag': 'Magahi (Female)',
+    'hne': 'Chhattisgarhi (Female)',
+    'mai': 'Maithili (Female)',
+    'as': 'Assamese (Female)',
+    'brx': 'Bodo (Female)',
+    'doi': 'Dogri (Female)',
+    'gu': 'Gujarati (Female)',
+    'ml': 'Malayalam (Female)',
+    'pa': 'Punjabi (Female)',
+    'ta': 'Tamil (Female)',
+    'ne': 'Nepali (Female)',
+    'sa': 'Sanskrit (Female)',
+    'or': 'Odia (Female)',
+    'mni': 'Manipuri (Female)',
+}
+
+
+def is_indic_reply_script(reply_script: str | None) -> bool:
+    """True for Hindi, Hinglish, and any svara-supported Indic language code."""
+    script = (reply_script or '').lower().strip()
+    if script in ('hi', 'hinglish'):
+        return True
+    return script in SVARA_SPEAKER_BY_LANG and script != 'hinglish'
+
+
+def resolve_svara_speaker(reply_script: str | None, voice_id: str | None = None) -> str:
+    """Map session/reply script and optional voice registry id to svara speaker name."""
+    from engines.voice_registry import get_voice
+
+    if voice_id:
+        profile = get_voice(voice_id)
+        if profile and profile.svara_speaker:
+            return profile.svara_speaker
+    script = (reply_script or 'hi').lower().strip()
+    return SVARA_SPEAKER_BY_LANG.get(script, SVARA_DEFAULT_VOICE)
 
 # Coqui XTTS-v2 fallback (Hindi/Hinglish voice clone from Astra ref)
 XTTS_MODEL = os.environ.get(

@@ -1,81 +1,28 @@
-"""Resolve TTS backend for English vs Hindi/Hinglish sessions."""
+"""Resolve TTS backend for English vs Indic language sessions."""
 
 from __future__ import annotations
 
 import logging
 
-from config import TTS_HINGLISH_ENGINE
+from config import TTS_INDIC_ENGINE, is_indic_reply_script
 
 logger = logging.getLogger(__name__)
 
-HinglishEngine = str  # f5_devanagari | f5 | xtts | melotts
-
-
-def _xtts_ok() -> bool:
-    try:
-        from engines.xtts_engine import xtts_available
-
-        return xtts_available()
-    except Exception:
-        return False
-
-
-def _melotts_ok() -> bool:
-    try:
-        from engines.melo_tts_engine import melotts_available
-
-        return melotts_available()
-    except Exception:
-        return False
-
-
-def _fallback_hinglish_engine() -> HinglishEngine:
-    logger.warning(
-        'Requested Hinglish engine unavailable; falling back to f5_devanagari '
-        '(install MeloTTS or set TTS_HINGLISH_ENGINE=f5_devanagari)'
-    )
-    return 'f5_devanagari'
-
-
-def resolve_hinglish_engine() -> HinglishEngine:
-    engine = TTS_HINGLISH_ENGINE.lower()
-    if engine == 'xtts':
-        if _xtts_ok():
-            return 'xtts'
-        logger.warning('TTS_HINGLISH_ENGINE=xtts but coqui-tts unavailable')
-        if _melotts_ok():
-            return 'melotts'
-        return _fallback_hinglish_engine()
-    if engine == 'melotts':
-        if _melotts_ok():
-            return 'melotts'
-        return _fallback_hinglish_engine()
-    if engine in ('f5', 'f5_devanagari'):
-        return engine
-    logger.warning('Unknown TTS_HINGLISH_ENGINE=%r; using f5_devanagari', engine)
-    return 'f5_devanagari'
-
 
 def resolve_tts_backend(reply_script: str | None) -> str:
-    """Return synthesis backend id: f5 | xtts | melotts."""
+    """Return synthesis backend id: f5 (English) | svara (Indic) | f5 fallback."""
     script = (reply_script or 'en').lower()
-    if script in ('hi', 'hinglish'):
-        from engines.llm_script_contract import uses_devanagari_output
+    if script == 'en':
+        return 'f5'
+    if is_indic_reply_script(script):
+        if TTS_INDIC_ENGINE == 'svara':
+            try:
+                from engines.svara_tts_engine import svara_available
 
-        # MeloTTS has no Hindi model — EN-IND reads Devanagari like American English.
-        # F5 + astra_hinglish (Swara ref) gives Indian Hindi/Hinglish accent.
-        if uses_devanagari_output():
-            configured = resolve_hinglish_engine()
-            if configured in ('melotts', 'xtts'):
-                logger.info(
-                    'Devanagari %s TTS → F5 Indian voice clone (configured=%s)',
-                    script,
-                    configured,
-                )
-            return 'f5'
-        hinglish = resolve_hinglish_engine()
-        if hinglish == 'xtts':
-            return 'xtts'
-        if hinglish == 'melotts':
-            return 'melotts'
+                if svara_available():
+                    return 'svara'
+            except Exception:
+                logger.debug('svara availability check failed', exc_info=True)
+        logger.warning('svara unavailable; falling back to F5 for reply_script=%s', script)
+        return 'f5'
     return 'f5'

@@ -27,13 +27,17 @@ class VoiceProfile:
     id: str
     display_name: str
     language: str
-    ref_audio: str
-    ref_text: str
+    ref_audio: str = ''
+    ref_text: str = ''
     source: str = 'upload'
     speed: float | None = None
+    engine: str | None = None
+    svara_speaker: str | None = None
     created_at: str = field(default_factory=lambda: _now_iso())
 
     def ref_audio_path(self) -> Path:
+        if not self.ref_audio:
+            return Path('')
         p = Path(self.ref_audio)
         if not p.is_absolute():
             p = _ROOT / p
@@ -267,11 +271,11 @@ def resolve_voice_for_language(language_hint: str | None) -> str:
 
     for pref in prefs:
         for v in by_lang.get(pref, []):
-            if v.ref_audio_path().is_file():
+            if v.engine == 'svara' or (v.ref_audio and v.ref_audio_path().is_file()):
                 return v.id
 
     for v in reg.voices:
-        if v.ref_audio_path().is_file():
+        if v.engine == 'svara' or (v.ref_audio and v.ref_audio_path().is_file()):
             return v.id
     return reg.default_voice_id
 
@@ -281,20 +285,26 @@ def resolve_voice_for_tts(
     *,
     reply_script: str | None,
 ) -> str:
-    """Pick voice id for synthesis — Hindi/Hinglish must not use English-only ref."""
+    """Pick voice id for synthesis — Hindi/Hinglish/Indic use Indian voice, English uses F5."""
     script = (reply_script or 'en').lower()
-    if script not in ('hi', 'hinglish'):
-        return voice_id or resolve_voice_for_language(script)
-    indian = resolve_voice_for_language(script)
-    if not voice_id or voice_id == 'astra':
-        return indian
-    profile = get_voice(voice_id)
-    if profile is None:
-        return indian
-    lang = normalize_voice_language(profile.language) or profile.language.lower()
-    if lang == 'en-in':
-        return indian
-    return voice_id
+    from config import is_indic_reply_script
+
+    if script == 'en':
+        return voice_id or resolve_voice_for_language('en-in')
+    if script in ('hi', 'hinglish') or is_indic_reply_script(script):
+        indian = resolve_voice_for_language(script if script in ('hi', 'hinglish') else 'hi')
+        if not voice_id or voice_id == 'astra':
+            return indian
+        profile = get_voice(voice_id)
+        if profile is None:
+            return indian
+        if profile.engine == 'svara':
+            return voice_id
+        lang = normalize_voice_language(profile.language) or profile.language.lower()
+        if lang == 'en-in':
+            return indian
+        return voice_id
+    return voice_id or resolve_voice_for_language(script)
 
 
 def list_voices_for_language(language_hint: str | None) -> list[VoiceProfile]:
@@ -310,11 +320,15 @@ def list_voices_for_language(language_hint: str | None) -> list[VoiceProfile]:
         by_lang.setdefault(key, []).append(v)
     for pref in prefs:
         for v in by_lang.get(pref, []):
-            if v.id not in seen and v.ref_audio_path().is_file():
+            if v.id not in seen and (
+                v.engine == 'svara' or (v.ref_audio and v.ref_audio_path().is_file())
+            ):
                 ordered.append(v)
                 seen.add(v.id)
     for v in reg.voices:
-        if v.id not in seen and v.ref_audio_path().is_file():
+        if v.id not in seen and (
+            v.engine == 'svara' or (v.ref_audio and v.ref_audio_path().is_file())
+        ):
             ordered.append(v)
             seen.add(v.id)
     return ordered

@@ -46,7 +46,8 @@ class DemoTtsRequest(BaseModel):
 @router.get('/config')
 async def demo_config():
     _ensure_demo_enabled()
-    from core.model_state import models_ready, warmup_error
+    from config import TTS_INDIC_ENGINE
+    from core.model_state import models_ready, svara_ready, svara_warmup_error, warmup_error
 
     from engines.voice_registry import get_default_voice_id, list_voices
 
@@ -66,10 +67,13 @@ async def demo_config():
         'interview_job_title': INTERVIEW_JOB_TITLE,
         'stt_provider': STT_PROVIDER,
         'tts_provider': auto_tts_provider(),
+        'tts_indic_engine': TTS_INDIC_ENGINE,
         'default_voice_id': get_default_voice_id(),
         'voices': voices,
         'models_ready': models_ready(),
         'warmup_error': warmup_error(),
+        'svara_ready': svara_ready(),
+        'svara_error': svara_warmup_error(),
         'ws_path': '/ws/voice',
     }
 

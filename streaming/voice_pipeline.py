@@ -13,7 +13,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 
-from config import F5_HINGLISH_SCRIPT, INTERJECTION_TIMEOUT_MS, OPENAI_VOICE_TEMPERATURE
+from config import F5_HINGLISH_SCRIPT, INTERJECTION_TIMEOUT_MS, OPENAI_VOICE_TEMPERATURE, is_indic_reply_script
 from engines.interjections import pick_interjection
 from engines.melo_phrase_buffer import HindiPhraseBuffer
 from engines.tts_router import resolve_tts_backend
@@ -31,8 +31,11 @@ CancelEvent = asyncio.Event
 
 
 def _use_hindi_phrase_buffer(reply_script: str) -> bool:
-    """Strong sentence boundaries for Hindi/Hinglish TTS (Melo or F5 Devanagari)."""
-    if resolve_tts_backend(reply_script) == 'melotts':
+    """Strong sentence boundaries for Indic TTS streaming (svara or F5 Devanagari)."""
+    backend = resolve_tts_backend(reply_script)
+    if backend == 'svara':
+        return reply_script in ('hi', 'hinglish') or is_indic_reply_script(reply_script)
+    if backend == 'melotts':
         return True
     return reply_script in ('hi', 'hinglish') and F5_HINGLISH_SCRIPT == 'devanagari'
 

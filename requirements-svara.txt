@@ -1,0 +1,10 @@
+# Optional: Indic TTS via embedded svara-TTS (install: bash scripts/install-svara-tts.sh)
+# English continues to use F5-TTS from requirements.txt
+langcodes
+language_data
+snac
+vllm>=0.17.0
+flashinfer-python>=0.2.3
+pyyaml
+torchcodec
+hf-transfer
