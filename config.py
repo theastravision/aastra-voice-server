@@ -103,14 +103,16 @@ TTS_HINGLISH_PACE_PAUSES = os.environ.get('TTS_HINGLISH_PACE_PAUSES', 'true').lo
     'true',
     'yes',
 )
-# Roman syllable hyphens for English loanwords (tek-no-lo-jee, in-jin-eer)
+# Roman syllable spacing for English/Hindi loanwords (tek no lo jee — not hyphens; F5 reads "-" badly)
 TTS_HINGLISH_PHONETIC_HYPHEN = os.environ.get('TTS_HINGLISH_PHONETIC_HYPHEN', 'true').lower() in (
     '1',
     'true',
     'yes',
 )
-# Minimum token length for dynamic syllable hyphenation (skip ki, ne, aur)
-TTS_HINGLISH_PHONETIC_MIN_LEN = int(os.environ.get('TTS_HINGLISH_PHONETIC_MIN_LEN', '3'))
+# Syllable join for TTS: space (recommended) or none — never hyphen (sounds unnatural on Swara/F5)
+TTS_HINGLISH_PHONETIC_SEPARATOR = os.environ.get('TTS_HINGLISH_PHONETIC_SEPARATOR', 'space').strip().lower()
+# Minimum token length for dynamic syllable spacing (skip ki, ne, use, aur)
+TTS_HINGLISH_PHONETIC_MIN_LEN = int(os.environ.get('TTS_HINGLISH_PHONETIC_MIN_LEN', '4'))
 # Reverse phonetic hyphens in hi/hinglish STT transcripts
 STT_HINGLISH_PHONETIC_DENORM = os.environ.get('STT_HINGLISH_PHONETIC_DENORM', 'true').lower() in (
     '1',
